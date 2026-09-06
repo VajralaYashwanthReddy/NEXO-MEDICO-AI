@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, signJwtToken } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
+import { addGlobalHospital } from '@/lib/hospitalStore';
 
 export async function POST(req: NextRequest) {
   let body: any = {};
@@ -73,6 +74,9 @@ export async function POST(req: NextRequest) {
         status: 'ACTIVE'
       }
     });
+
+    // Register into globalStore to ensure immediate availability in Platform Admin
+    addGlobalHospital(hospital);
 
     // 2. Create Hospital Admin User
     const passwordHash = await hashPassword(adminPassword);
@@ -218,6 +222,9 @@ export async function POST(req: NextRequest) {
       status: 'ACTIVE',
       createdAt: new Date().toISOString()
     };
+
+    // Store in global store so Platform Super Admin immediately sees it
+    addGlobalHospital(mockHospital);
 
     const mockAdminUser = {
       id: mockAdminId,
