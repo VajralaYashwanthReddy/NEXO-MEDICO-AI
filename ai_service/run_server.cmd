@@ -1,0 +1,3 @@
+@echo off
+echo Starting Nexo Medico AI FastAPI Microservice on port 8000...
+python ai_service/main.py
