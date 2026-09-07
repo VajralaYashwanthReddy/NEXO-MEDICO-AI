@@ -26,70 +26,82 @@ export interface HealthTwinPredictionResult {
 }
 
 export function generateHealthTwinPrediction(vitals: VitalsInput): HealthTwinPredictionResult {
-  const hr = vitals.heartRate || 72;
-  const sys = vitals.sysBP || 120;
-  const spo2 = vitals.spO2 || 98;
-  const temp = vitals.temperature || 36.8;
-  const rr = vitals.respRate || 16;
-  const wbc = vitals.wbcCount || 7.5;
-  const lactate = vitals.lactate || 1.1;
+  const hr = vitals.heartRate ?? 72;
+  const sys = vitals.sysBP ?? 120;
+  const spo2 = vitals.spO2 ?? 98;
+  const temp = vitals.temperature ?? 36.8;
+  const rr = vitals.respRate ?? 16;
+  const wbc = vitals.wbcCount ?? 7.5;
+  const lactate = vitals.lactate ?? 1.1;
 
   // Base calculation for Sepsis, Cardiac & Respiratory Risk Scores
-  let sepsisRisk = 12;
-  let cardiacRisk = 10;
-  let respiratoryRisk = 8;
+  let sepsisRisk = 4;
+  let cardiacRisk = 4;
+  let respiratoryRisk = 4;
 
   // Sepsis risk factors (SIRS / qSOFA)
-  if (temp > 38.3 || temp < 36.0) sepsisRisk += 25;
-  if (hr > 90) sepsisRisk += 20;
+  if (temp > 38.3 || temp < 36.0) sepsisRisk += 30;
+  else if (temp > 37.8) sepsisRisk += 15;
+
+  if (hr > 110) sepsisRisk += 25;
+  else if (hr > 90) sepsisRisk += 15;
+
   if (rr > 22) sepsisRisk += 20;
-  if (wbc > 12 || wbc < 4) sepsisRisk += 20;
+  if (wbc > 12 || wbc < 4) sepsisRisk += 15;
   if (lactate > 2.0) sepsisRisk += 25;
 
   // Cardiac risk factors
-  if (hr > 120 || hr < 50) cardiacRisk += 30;
-  if (sys > 160 || sys < 90) cardiacRisk += 30;
+  if (hr > 120 || hr < 50) cardiacRisk += 35;
+  else if (hr > 100) cardiacRisk += 15;
+
+  if (sys > 160 || sys < 90) cardiacRisk += 35;
+  else if (sys > 140 || sys < 100) cardiacRisk += 15;
 
   // Respiratory risk factors
-  if (spo2 < 92) respiratoryRisk += 45;
-  else if (spo2 < 95) respiratoryRisk += 20;
-  if (rr > 24 || rr < 10) respiratoryRisk += 30;
+  if (spo2 < 90) respiratoryRisk += 60;
+  else if (spo2 < 94) respiratoryRisk += 35;
+  else if (spo2 < 96) respiratoryRisk += 15;
+
+  if (rr > 24 || rr < 10) respiratoryRisk += 25;
 
   // Clamp risk scores
-  sepsisRisk = Math.min(98, Math.max(5, sepsisRisk));
-  cardiacRisk = Math.min(98, Math.max(5, cardiacRisk));
-  respiratoryRisk = Math.min(98, Math.max(5, respiratoryRisk));
+  sepsisRisk = Math.min(95, Math.max(4, sepsisRisk));
+  cardiacRisk = Math.min(95, Math.max(4, cardiacRisk));
+  respiratoryRisk = Math.min(95, Math.max(4, respiratoryRisk));
 
   const maxRisk = Math.max(sepsisRisk, cardiacRisk, respiratoryRisk);
-  const overallScore = Math.max(10, Math.round(100 - maxRisk));
+  const overallScore = Math.max(5, Math.round(100 - maxRisk));
 
   let status: 'STABLE' | 'GUARDED' | 'HIGH_RISK' | 'CRITICAL_DETERIORATION' = 'STABLE';
-  if (overallScore < 40) status = 'CRITICAL_DETERIORATION';
-  else if (overallScore < 60) status = 'HIGH_RISK';
-  else if (overallScore < 78) status = 'GUARDED';
+  if (overallScore < 35) status = 'CRITICAL_DETERIORATION';
+  else if (overallScore < 55) status = 'HIGH_RISK';
+  else if (overallScore < 75) status = 'GUARDED';
 
   // Generate 24-hour predictive trajectory points (+0h to +24h)
+  const isHealthy = maxRisk <= 15;
+  
   const forecastTrend: PredictivePoint[] = [
-    { hour: 'Current (+0h)', healthScore: overallScore, sepsisRisk, cardiacRisk, respiratoryRisk },
-    { hour: '+4h Forecast', healthScore: Math.max(5, overallScore - Math.round(maxRisk * 0.05)), sepsisRisk: Math.min(99, sepsisRisk + 2), cardiacRisk: Math.min(99, cardiacRisk + 1), respiratoryRisk: Math.min(99, respiratoryRisk + 2) },
-    { hour: '+8h Forecast', healthScore: Math.max(5, overallScore - Math.round(maxRisk * 0.12)), sepsisRisk: Math.min(99, sepsisRisk + 4), cardiacRisk: Math.min(99, cardiacRisk + 3), respiratoryRisk: Math.min(99, respiratoryRisk + 3) },
-    { hour: '+12h Forecast', healthScore: Math.max(5, overallScore - Math.round(maxRisk * 0.18)), sepsisRisk: Math.min(99, sepsisRisk + 6), cardiacRisk: Math.min(99, cardiacRisk + 5), respiratoryRisk: Math.min(99, respiratoryRisk + 5) },
-    { hour: '+16h Forecast', healthScore: Math.max(5, overallScore - Math.round(maxRisk * 0.15)), sepsisRisk: Math.min(99, sepsisRisk + 4), cardiacRisk: Math.min(99, cardiacRisk + 4), respiratoryRisk: Math.min(99, respiratoryRisk + 4) },
-    { hour: '+20h Forecast', healthScore: Math.max(5, overallScore - Math.round(maxRisk * 0.08)), sepsisRisk: Math.min(99, sepsisRisk + 2), cardiacRisk: Math.min(99, cardiacRisk + 2), respiratoryRisk: Math.min(99, respiratoryRisk + 2) },
-    { hour: '+24h Forecast', healthScore: Math.max(5, overallScore + 3), sepsisRisk: Math.max(5, sepsisRisk - 3), cardiacRisk: Math.max(5, cardiacRisk - 2), respiratoryRisk: Math.max(5, respiratoryRisk - 3) }
+    { hour: 'Current', healthScore: overallScore, sepsisRisk, cardiacRisk, respiratoryRisk },
+    { hour: '+4h', healthScore: isHealthy ? Math.min(99, overallScore + 1) : Math.max(5, overallScore - Math.round(maxRisk * 0.08)), sepsisRisk, cardiacRisk, respiratoryRisk },
+    { hour: '+8h', healthScore: isHealthy ? Math.min(99, overallScore + 2) : Math.max(5, overallScore - Math.round(maxRisk * 0.15)), sepsisRisk, cardiacRisk, respiratoryRisk },
+    { hour: '+12h', healthScore: isHealthy ? Math.min(99, overallScore + 2) : Math.max(5, overallScore - Math.round(maxRisk * 0.22)), sepsisRisk, cardiacRisk, respiratoryRisk },
+    { hour: '+16h', healthScore: isHealthy ? Math.min(99, overallScore + 3) : Math.max(5, overallScore - Math.round(maxRisk * 0.18)), sepsisRisk, cardiacRisk, respiratoryRisk },
+    { hour: '+20h', healthScore: isHealthy ? Math.min(99, overallScore + 3) : Math.max(5, overallScore - Math.round(maxRisk * 0.10)), sepsisRisk, cardiacRisk, respiratoryRisk },
+    { hour: '+24h', healthScore: isHealthy ? Math.min(99, overallScore + 4) : Math.max(5, overallScore + 5), sepsisRisk, cardiacRisk, respiratoryRisk }
   ];
 
   const keyRiskDrivers: string[] = [];
-  if (spo2 < 94) keyRiskDrivers.push(`Sub-optimal Oxygen Saturation (SpO2 ${spo2}%)`);
-  if (temp > 38.0) keyRiskDrivers.push(`Pyrexia / Fever Spike (${temp}°C)`);
-  if (hr > 100) keyRiskDrivers.push(`Tachycardia (Heart Rate ${hr} BPM)`);
+  if (spo2 < 95) keyRiskDrivers.push(`Sub-optimal Oxygen Saturation (SpO2 ${spo2}%)`);
+  if (temp > 37.8) keyRiskDrivers.push(`Pyrexia / Elevated Temperature (${temp}°C)`);
+  if (hr > 90) keyRiskDrivers.push(`Tachycardia (Heart Rate ${hr} BPM)`);
   if (sys < 90) keyRiskDrivers.push(`Hypotension (Systolic BP ${sys} mmHg)`);
-  if (keyRiskDrivers.length === 0) keyRiskDrivers.push('Vitals baseline within physiological target bounds.');
+  if (sys > 140) keyRiskDrivers.push(`Hypertension (Systolic BP ${sys} mmHg)`);
+  if (keyRiskDrivers.length === 0) keyRiskDrivers.push('All vitals parameters are within optimal target baseline.');
 
   const preventativeRecommendations: string[] = [];
-  if (sepsisRisk > 40) preventativeRecommendations.push('Order Blood Cultures x 2 & Serum Lactate Serial Draw');
-  if (respiratoryRisk > 30) preventativeRecommendations.push('Initiate Titrated Supplemental Oxygen Therapy (2L/min Nasal Cannula)');
-  if (cardiacRisk > 30) preventativeRecommendations.push('Stat 12-Lead ECG & Continuous Cardiac Telemetry');
+  if (sepsisRisk > 35) preventativeRecommendations.push('Order Blood Cultures x 2 & Serum Lactate Serial Draw');
+  if (respiratoryRisk > 25) preventativeRecommendations.push('Initiate Titrated Supplemental Oxygen Therapy (2L/min Nasal Cannula)');
+  if (cardiacRisk > 25) preventativeRecommendations.push('Stat 12-Lead ECG & Continuous Cardiac Telemetry');
   if (preventativeRecommendations.length === 0) preventativeRecommendations.push('Maintain Routine Nursing Vitals Checks every 4 hours');
 
   return {
