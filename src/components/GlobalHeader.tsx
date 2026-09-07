@@ -5,6 +5,8 @@ import { useAuth } from '@/context/AuthContext';
 import { Search, Bell, User, X, Menu, Edit3, KeyRound, LogOut, CheckCircle2, ShieldCheck, Building2, Mail } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EmergencyCodeRedBanner } from '@/components/EmergencyCodeRedBanner';
+import { EmergencyQrScannerModal } from '@/components/EmergencyQrScannerModal';
+import { Siren } from 'lucide-react';
 
 interface GlobalHeaderProps {
   onToggleMobileMenu?: () => void;
@@ -13,6 +15,7 @@ interface GlobalHeaderProps {
 export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }) => {
   const { user, notifications, logout, updateUser, clearNotifications } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showScannerModal, setShowScannerModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -183,7 +186,19 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
       </div>
 
       {/* Right Controls: User Profile Badge & Notifications */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-3">
+        
+        {/* Paramedic / ER Emergency QR Scanner Button */}
+        <button
+          type="button"
+          onClick={() => setShowScannerModal(true)}
+          className="px-2.5 sm:px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-200 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+          title="Paramedic & ER Emergency QR Scanner"
+        >
+          <Siren className="w-4 h-4 text-rose-400 animate-pulse shrink-0" />
+          <span className="hidden sm:inline">Scan Emergency QR</span>
+        </button>
+
         {/* User Account Profile Badge & Dropdown Card */}
         <div className="relative">
           <button
@@ -515,6 +530,12 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
         </div>
       )}
     </header>
+
+    {/* PARAMEDIC & ER EMERGENCY QR SCANNER MODAL */}
+    <EmergencyQrScannerModal
+      isOpen={showScannerModal}
+      onClose={() => setShowScannerModal(false)}
+    />
     </>
   );
 };

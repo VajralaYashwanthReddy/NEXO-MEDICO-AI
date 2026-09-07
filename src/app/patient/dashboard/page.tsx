@@ -28,6 +28,7 @@ import {
   Search,
   BookOpen
 } from 'lucide-react';
+import { PatientEmergencyQrCard } from '@/components/PatientEmergencyQrCard';
 
 export default function PatientDashboard() {
   const { user } = useAuth();
@@ -271,6 +272,20 @@ export default function PatientDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Universal Encrypted Patient Emergency QR Passport */}
+      <PatientEmergencyQrCard
+        patientData={{
+          patientId: patient.patientCode || 'NEXO-PAT-000002',
+          fullName: patient.fullName || user?.name || 'John Doe',
+          bloodGroup: patient.bloodGroup || 'O+',
+          allergies: patient.allergies || 'Penicillin, Sulfa, Peanuts',
+          conditions: 'Type 1 Diabetes, Mild Asthma',
+          emergencyContactName: 'Sarah Doe (Spouse)',
+          emergencyContactPhone: patient.phone || '+1 (555) 012-3456',
+          resuscitationStatus: 'Full Code / Advance Directive Registered'
+        }}
+      />
 
       {/* ----------------- 2. NAVIGATION TABS BAR ----------------- */}
       <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap gap-1">
