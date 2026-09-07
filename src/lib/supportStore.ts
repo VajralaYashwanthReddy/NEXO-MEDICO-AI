@@ -19,7 +19,7 @@ export interface SupportTicket {
 
 const defaultTickets: SupportTicket[] = [
   {
-    id: 'ticket-sup-01',
+    id: 'ticket-sup-default-01',
     ticketCode: 'TICKET-2026-0001',
     hospitalId: 'hosp-metro-01',
     registeredName: 'Dr. Sarah Jenkins',
@@ -35,7 +35,7 @@ const defaultTickets: SupportTicket[] = [
     hospital: { id: 'hosp-metro-01', name: 'Metropolitan General Hospital', city: 'Metropolis' }
   },
   {
-    id: 'ticket-sup-02',
+    id: 'ticket-sup-default-02',
     ticketCode: 'TICKET-2026-0002',
     hospitalId: 'hosp-apollo-02',
     registeredName: 'James Wilson',
@@ -62,12 +62,26 @@ export function getGlobalSupportTickets(): SupportTicket[] {
   return globalForSupport.globalSupportStore;
 }
 
+export function generateUniqueTicketCode(): string {
+  const ts = Date.now().toString().slice(-4);
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  const candidate = `TICKET-2026-${ts}-${rand}`;
+  return candidate;
+}
+
 export function addGlobalSupportTicket(ticket: Partial<SupportTicket>): SupportTicket {
-  const count = globalForSupport.globalSupportStore.length + 1;
-  const ticketCode = ticket.ticketCode || `TICKET-2026-${String(count).padStart(4, '0')}`;
+  let ticketCode = ticket.ticketCode;
+  const store = globalForSupport.globalSupportStore;
+
+  // If no ticket code provided or if ticket code collides with existing ticket, auto generate a unique candidate
+  if (!ticketCode || store.some(t => t.ticketCode === ticketCode)) {
+    ticketCode = generateUniqueTicketCode();
+  }
+
+  const id = ticket.id || `ticket-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
   const newTicket: SupportTicket = {
-    id: ticket.id || `ticket-${Date.now()}`,
+    id,
     ticketCode,
     hospitalId: ticket.hospitalId || null,
     registeredName: ticket.registeredName || 'Registered User',
@@ -83,15 +97,18 @@ export function addGlobalSupportTicket(ticket: Partial<SupportTicket>): SupportT
     hospital: ticket.hospital || null
   };
 
-  const exists = globalForSupport.globalSupportStore.some(t => t.id === newTicket.id || t.ticketCode === newTicket.ticketCode);
-  if (!exists) {
-    globalForSupport.globalSupportStore.unshift(newTicket);
+  const existingIdx = store.findIndex(t => t.id === newTicket.id);
+  if (existingIdx >= 0) {
+    store[existingIdx] = newTicket;
+  } else {
+    store.unshift(newTicket);
   }
+
   return newTicket;
 }
 
 export function updateGlobalSupportTicket(ticketId: string, status: string, adminResponse?: string): SupportTicket | null {
-  const ticket = globalForSupport.globalSupportStore.find(t => t.id === ticketId);
+  const ticket = globalForSupport.globalSupportStore.find(t => t.id === ticketId || t.ticketCode === ticketId);
   if (ticket) {
     ticket.status = status;
     if (adminResponse !== undefined) {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
-import { getGlobalSupportTickets, addGlobalSupportTicket, updateGlobalSupportTicket } from '@/lib/supportStore';
+import { getGlobalSupportTickets, addGlobalSupportTicket, updateGlobalSupportTicket, generateUniqueTicketCode } from '@/lib/supportStore';
 
 export async function GET(req: NextRequest) {
   try {
@@ -106,13 +106,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { registeredName, email, mobile, subject, description, issueType, attachmentUrl, hospitalId } = body;
 
-    let dbCount = 0;
-    try {
-      dbCount = await prisma.supportIssue.count();
-    } catch (e) {
-      console.warn('Prisma supportIssue count warning:', e);
-    }
-    const ticketCode = `TICKET-2026-${String(dbCount + 1).padStart(4, '0')}`;
+    const ticketCode = generateUniqueTicketCode();
 
     let newIssue: any = null;
     try {
@@ -148,6 +142,7 @@ export async function POST(req: NextRequest) {
       hospitalId: hospitalId || user?.hospitalId || null,
       createdAt: newIssue?.createdAt ? String(newIssue.createdAt) : new Date().toISOString()
     });
+
 
     if (user) {
       try {

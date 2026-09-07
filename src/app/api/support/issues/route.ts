@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
-import { addGlobalSupportTicket } from '@/lib/supportStore';
+import { addGlobalSupportTicket, generateUniqueTicketCode } from '@/lib/supportStore';
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,13 +23,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Registered Name, Mobile, Email, Subject, and Description are required' }, { status: 400 });
     }
 
-    let dbCount = 0;
-    try {
-      dbCount = await prisma.supportIssue.count();
-    } catch (e) {
-      console.warn('Database supportIssue count warning:', e);
-    }
-    const ticketCode = `TICKET-2026-${String(dbCount + 1).padStart(4, '0')}`;
+    const ticketCode = generateUniqueTicketCode();
 
     let issue: any = null;
     try {
@@ -48,7 +42,7 @@ export async function POST(req: NextRequest) {
         }
       });
     } catch (err) {
-      console.warn('Prisma supportIssue create error, using global store:', err);
+      console.warn('Prisma supportIssue create error, using global store fallback:', err);
     }
 
     const ticket = addGlobalSupportTicket({
@@ -88,4 +82,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
   }
 }
+
 

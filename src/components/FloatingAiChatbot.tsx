@@ -216,6 +216,10 @@ Our platform super admin team has received your ticket and will process it live 
           ticketData: ticket
         }
       ]);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('support-ticket-created'));
+      }
+
       setShowTicketForm(false);
       setTicketSubject('');
       setTicketDescription('');

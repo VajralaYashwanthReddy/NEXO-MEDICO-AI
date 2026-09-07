@@ -56,6 +56,15 @@ export default function SupportIssuesAdminPage() {
 
   useEffect(() => {
     fetchIssues();
+    const handleCreated = () => fetchIssues();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('support-ticket-created', handleCreated);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('support-ticket-created', handleCreated);
+      }
+    };
   }, [statusFilter]);
 
   const handleTakeAction = async (e: React.FormEvent) => {
