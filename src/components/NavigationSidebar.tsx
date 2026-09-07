@@ -30,10 +30,16 @@ import {
   Globe,
   Headphones,
   LifeBuoy,
-  Cpu
+  Cpu,
+  X
 } from 'lucide-react';
 
-export const NavigationSidebar: React.FC = () => {
+interface NavigationSidebarProps {
+  isOpenMobile?: boolean;
+  onCloseMobile?: () => void;
+}
+
+export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({ isOpenMobile, onCloseMobile }) => {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const [showContactUs, setShowContactUs] = useState(false);
@@ -165,21 +171,48 @@ export const NavigationSidebar: React.FC = () => {
 
   return (
     <>
-      <aside className="w-64 bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between border-r border-slate-800 shadow-xl select-none">
+      {/* Mobile Dark Backdrop Overlay */}
+      {isOpenMobile && (
+        <div
+          onClick={onCloseMobile}
+          className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-40 md:hidden animate-in fade-in duration-200"
+        />
+      )}
+
+      {/* Sidebar Drawer */}
+      <aside
+        className={`bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between border-r border-slate-800 shadow-2xl select-none transition-all duration-200
+          md:fixed md:inset-y-0 md:left-0 md:w-64 md:z-30 md:flex
+          ${isOpenMobile ? 'fixed inset-y-0 left-0 w-72 z-50 flex' : 'hidden md:flex'}
+        `}
+      >
         <div>
           {/* Hospital Branding Header */}
-          <div className="p-5 border-b border-slate-800 flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-cyan-500/20">
-              <Stethoscope className="w-6 h-6 text-white" />
+          <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-gradient-to-tr from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-cyan-500/20">
+                <Stethoscope className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="font-bold text-lg leading-tight tracking-tight bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+                  Nexo Medico AI
+                </h1>
+                <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">
+                  {isPlatformSuperAdmin ? 'Platform Admin Scope' : 'Hospital Management'}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="font-bold text-lg leading-tight tracking-tight bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                Nexo Medico AI
-              </h1>
-              <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">
-                {isPlatformSuperAdmin ? 'Platform Admin Scope' : 'Hospital Management'}
-              </p>
-            </div>
+
+            {/* Mobile Close Button */}
+            {onCloseMobile && (
+              <button
+                onClick={onCloseMobile}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 md:hidden"
+                title="Close Navigation"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
 
           {/* Tenant Indicator */}
@@ -228,6 +261,7 @@ export const NavigationSidebar: React.FC = () => {
                       <Link
                         key={item.href}
                         href={item.href}
+                        onClick={() => onCloseMobile && onCloseMobile()}
                         className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                           isActive
                             ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
@@ -254,6 +288,7 @@ export const NavigationSidebar: React.FC = () => {
                       <Link
                         key={item.href}
                         href={item.href}
+                        onClick={() => onCloseMobile && onCloseMobile()}
                         className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                           isActive
                             ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
@@ -280,6 +315,7 @@ export const NavigationSidebar: React.FC = () => {
                       <Link
                         key={item.href}
                         href={item.href}
+                        onClick={() => onCloseMobile && onCloseMobile()}
                         className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                           isActive
                             ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
@@ -301,6 +337,7 @@ export const NavigationSidebar: React.FC = () => {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={() => onCloseMobile && onCloseMobile()}
                     className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
                       isActive
                         ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'

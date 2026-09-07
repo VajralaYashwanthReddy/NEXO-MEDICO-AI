@@ -2,10 +2,14 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { Search, Bell, User, X } from 'lucide-react';
+import { Search, Bell, User, X, Menu } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-export const GlobalHeader: React.FC = () => {
+interface GlobalHeaderProps {
+  onToggleMobileMenu?: () => void;
+}
+
+export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }) => {
   const { user, notifications } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -35,18 +39,31 @@ export const GlobalHeader: React.FC = () => {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs select-none">
-      {/* Global Hospital Search Bar */}
-      <form onSubmit={handleSearch} className="relative w-80">
-        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search patients, Universal ID (NEXO-PAT-...), phone..."
-          className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white transition-all"
-        />
-      </form>
+    <header className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20 shadow-2xs select-none gap-2">
+      <div className="flex items-center gap-2 flex-1 max-w-md">
+        {/* Mobile Hamburger Toggle Button */}
+        {onToggleMobileMenu && (
+          <button
+            onClick={onToggleMobileMenu}
+            className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl md:hidden transition-all shrink-0"
+            title="Toggle Navigation Menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
+
+        {/* Global Hospital Search Bar */}
+        <form onSubmit={handleSearch} className="relative w-full max-w-xs sm:w-80">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search patients, Universal ID..."
+            className="w-full pl-9 pr-3 py-1.5 sm:py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white transition-all"
+          />
+        </form>
+      </div>
 
       {/* Right Controls: User Profile Badge & Notifications */}
       <div className="flex items-center gap-4">
