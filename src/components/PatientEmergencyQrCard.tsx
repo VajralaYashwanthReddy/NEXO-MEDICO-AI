@@ -23,8 +23,8 @@ export function PatientEmergencyQrCard({
   const [copied, setCopied] = useState(false);
   const qrPayload = encodeEmergencyQrPayload(patientData);
 
-  // Generate SVG QR matrix visually
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrPayload)}`;
+  // Generate high-density SVG QR matrix visually for camera scan
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrPayload)}`;
 
   const handleCopyPayload = () => {
     navigator.clipboard.writeText(qrPayload);
