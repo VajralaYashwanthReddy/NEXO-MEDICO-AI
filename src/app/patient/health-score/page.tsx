@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { HeartPulse, Award, Activity } from 'lucide-react';
+import { HealthTwinPredictorCard } from '@/components/HealthTwinPredictorCard';
 
 export default function PatientHealthScorePage() {
   const [bmi, setBmi] = useState('24.2');
@@ -64,6 +65,9 @@ export default function PatientHealthScorePage() {
           </p>
         </div>
       </div>
+
+      {/* AI Health Twin 24h Deterioration Forecast */}
+      <HealthTwinPredictorCard patientName="Personal Account" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <form onSubmit={handleCalculate} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-xs">

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Search, Bell, User, X, Menu, Edit3, KeyRound, LogOut, CheckCircle2, ShieldCheck, Building2, Mail } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { EmergencyCodeRedBanner } from '@/components/EmergencyCodeRedBanner';
 
 interface GlobalHeaderProps {
   onToggleMobileMenu?: () => void;
@@ -153,7 +154,9 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20 shadow-2xs select-none gap-2">
+    <>
+      <EmergencyCodeRedBanner />
+      <header className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-20 shadow-2xs select-none gap-2">
       <div className="flex items-center gap-2 flex-1 max-w-md">
         {/* Mobile Hamburger Toggle Button */}
         {onToggleMobileMenu && (
@@ -495,5 +498,6 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
         </div>
       )}
     </header>
+    </>
   );
 };
