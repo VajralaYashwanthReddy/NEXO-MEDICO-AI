@@ -29,6 +29,7 @@ interface AuthContextType {
   logout: () => void;
   updateUser: (updatedData: Partial<UserContext>, newToken?: string) => void;
   notifications: NotificationItem[];
+  clearNotifications: () => void;
   hasPermission: (code: string) => boolean;
 }
 
@@ -40,6 +41,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
   updateUser: () => {},
   notifications: [],
+  clearNotifications: () => {},
   hasPermission: () => false
 });
 
@@ -83,19 +85,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Fetch initial & periodic broadcast notifications
     const syncNotifications = () => {
+      const clearedSet = typeof window !== 'undefined'
+        ? new Set(JSON.parse(localStorage.getItem('nexo_cleared_notifs') || '[]'))
+        : new Set();
+
       fetch(`/api/admin/broadcast-notifications?role=${user.role}&hospitalId=${user.hospitalId || ''}`)
         .then(res => res.json())
         .then(data => {
           if (data?.notifications && Array.isArray(data.notifications)) {
-            const mapped: NotificationItem[] = data.notifications.map((n: any) => ({
-              id: n.id,
-              event: n.title,
-              message: `[${n.severity || 'INFO'}] ${n.message} (From: ${n.senderName || 'Platform Admin'})`,
-              timestamp: n.timestamp
-            }));
+            const mapped: NotificationItem[] = data.notifications
+              .filter((n: any) => !clearedSet.has(n.id))
+              .map((n: any) => ({
+                id: n.id,
+                event: n.title,
+                message: `[${n.severity || 'INFO'}] ${n.message} (From: ${n.senderName || 'Platform Admin'})`,
+                timestamp: n.timestamp
+              }));
 
             setNotifications(prev => {
-              // Merge deduplicated
               const existingIds = new Set(prev.map(p => p.id));
               const newItems = mapped.filter(m => !existingIds.has(m.id));
               return [...newItems, ...prev].slice(0, 30);
@@ -114,9 +121,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          const clearedSet = typeof window !== 'undefined'
+            ? new Set(JSON.parse(localStorage.getItem('nexo_cleared_notifs') || '[]'))
+            : new Set();
+
           if (data.event === 'BROADCAST_NOTIFICATION' && data.payload) {
             const n = data.payload;
-            if (n.targetRole === 'ALL' || n.targetRole === user.role) {
+            if ((n.targetRole === 'ALL' || n.targetRole === user.role) && !clearedSet.has(n.id)) {
               setNotifications(prev => [
                 {
                   id: n.id || Math.random().toString(),
@@ -154,6 +165,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user]);
 
+  const clearNotifications = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        const currentIds = notifications.map(n => n.id);
+        const existing: string[] = JSON.parse(localStorage.getItem('nexo_cleared_notifs') || '[]');
+        const updated = Array.from(new Set([...existing, ...currentIds]));
+        localStorage.setItem('nexo_cleared_notifs', JSON.stringify(updated));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    setNotifications([]);
+  };
+
   const login = (newToken: string, newUser: UserContext) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('nexo_jwt', newToken);
@@ -187,7 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, token, login, logout, updateUser, notifications, hasPermission }}>
+    <AuthContext.Provider value={{ user, loading, token, login, logout, updateUser, notifications, clearNotifications, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

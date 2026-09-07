@@ -11,7 +11,7 @@ interface GlobalHeaderProps {
 }
 
 export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }) => {
-  const { user, notifications, logout, updateUser } = useAuth();
+  const { user, notifications, logout, updateUser, clearNotifications } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -275,9 +275,21 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
                   <Bell className="w-4 h-4 text-cyan-400" />
                   <span className="font-bold">Real-time Platform Notifications</span>
                 </div>
-                <span className="text-[10px] bg-cyan-500 text-white px-2.5 py-0.5 rounded-full font-bold shadow-xs">
-                  {notifications.length} Active
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] bg-cyan-500 text-white px-2 py-0.5 rounded-full font-bold shadow-xs">
+                    {notifications.length} Active
+                  </span>
+                  {notifications.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={clearNotifications}
+                      className="text-[10px] bg-rose-600/80 hover:bg-rose-600 text-white px-2.5 py-0.5 rounded-full font-bold transition-all cursor-pointer shadow-xs"
+                      title="Clear & Mark All as Read"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="max-h-96 overflow-y-auto divide-y divide-slate-100 custom-scrollbar">
                 {notifications.length === 0 ? (
