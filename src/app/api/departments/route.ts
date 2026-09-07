@@ -64,16 +64,23 @@ export async function GET(req: NextRequest) {
 
     const mergedMap = new Map<string, any>();
     for (const d of globalForDepts.globalDepartmentsStore) {
-      mergedMap.set(d.code, d);
-      mergedMap.set(d.id, d);
+      mergedMap.set(d.code.toUpperCase(), d);
     }
 
     for (const d of dbDepartments) {
-      mergedMap.set(d.code, d);
-      mergedMap.set(d.id, d);
+      const existing = mergedMap.get(d.code.toUpperCase());
+      if (existing) {
+        mergedMap.set(d.code.toUpperCase(), {
+          ...existing,
+          ...d,
+          _count: d._count || existing._count
+        });
+      } else {
+        mergedMap.set(d.code.toUpperCase(), d);
+      }
     }
 
-    return NextResponse.json({ departments: Array.from(new Set(mergedMap.values())) });
+    return NextResponse.json({ departments: Array.from(mergedMap.values()) });
   } catch (err: any) {
     return NextResponse.json({ departments: globalForDepts.globalDepartmentsStore });
   }
@@ -95,8 +102,17 @@ export async function POST(req: NextRequest) {
     let createdDepartment: any = null;
 
     try {
-      createdDepartment = await prisma.department.create({
-        data: {
+      createdDepartment = await prisma.department.upsert({
+        where: { hospitalId_code: { hospitalId, code: deptCode } },
+        update: {
+          name,
+          description: description || 'Clinical specialized unit',
+          location: location || 'Main Hospital Complex',
+          contact: contact || '100',
+          headDoctorId: headDoctorId || null,
+          status: 'ACTIVE'
+        },
+        create: {
           hospitalId,
           code: deptCode,
           name,
@@ -108,11 +124,11 @@ export async function POST(req: NextRequest) {
         }
       });
     } catch (dbErr: any) {
-      console.warn('Prisma department create skipped, storing in global store:', dbErr.message);
+      console.warn('Prisma department upsert skipped, storing in global store:', dbErr.message);
     }
 
-    const departmentItem: DepartmentItem = createdDepartment || {
-      id: `dept-${Date.now()}`,
+    const departmentItem: DepartmentItem = {
+      id: createdDepartment?.id || `dept-${deptCode.toLowerCase()}-${Date.now()}`,
       hospitalId,
       code: deptCode,
       name,
@@ -120,12 +136,17 @@ export async function POST(req: NextRequest) {
       location: location || 'Main Hospital Complex',
       contact: contact || '100',
       status: 'ACTIVE',
-      _count: { doctorProfiles: 0, staffProfiles: 0, appointments: 0, admissions: 0 }
+      _count: createdDepartment?._count || { doctorProfiles: 0, staffProfiles: 0, appointments: 0, admissions: 0 }
     };
 
-    // Save to global in-memory store so GET immediately returns the new department
-    const exists = globalForDepts.globalDepartmentsStore.some(d => d.code === deptCode || d.id === departmentItem.id);
-    if (!exists) {
+    // Update in-place if exists or append to global store
+    const existingIndex = globalForDepts.globalDepartmentsStore.findIndex(d => d.code === deptCode);
+    if (existingIndex >= 0) {
+      globalForDepts.globalDepartmentsStore[existingIndex] = {
+        ...globalForDepts.globalDepartmentsStore[existingIndex],
+        ...departmentItem
+      };
+    } else {
       globalForDepts.globalDepartmentsStore.push(departmentItem);
     }
 
@@ -141,7 +162,7 @@ export async function POST(req: NextRequest) {
       // ignore
     }
 
-    return NextResponse.json({ message: 'Department created successfully', department: departmentItem }, { status: 201 });
+    return NextResponse.json({ message: 'Department created/updated successfully', department: departmentItem }, { status: 201 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
