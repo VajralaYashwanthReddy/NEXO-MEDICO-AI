@@ -27,6 +27,7 @@ interface AuthContextType {
   token: string | null;
   login: (token: string, user: UserContext) => void;
   logout: () => void;
+  updateUser: (updatedData: Partial<UserContext>, newToken?: string) => void;
   notifications: NotificationItem[];
   hasPermission: (code: string) => boolean;
 }
@@ -37,6 +38,7 @@ const AuthContext = createContext<AuthContextType>({
   token: null,
   login: () => {},
   logout: () => {},
+  updateUser: () => {},
   notifications: [],
   hasPermission: () => false
 });
@@ -129,6 +131,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     router.push('/login');
   };
 
+  const updateUser = (updatedData: Partial<UserContext>, newToken?: string) => {
+    if (newToken && typeof window !== 'undefined') {
+      localStorage.setItem('nexo_jwt', newToken);
+      setToken(newToken);
+    }
+    setUser(prev => (prev ? { ...prev, ...updatedData } : null));
+  };
+
   const hasPermission = (code: string) => {
     if (!user) return false;
     if (user.role === 'SUPER_ADMIN' || user.role === 'HOSPITAL_ADMIN') return true;
@@ -136,7 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, token, login, logout, notifications, hasPermission }}>
+    <AuthContext.Provider value={{ user, loading, token, login, logout, updateUser, notifications, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );
