@@ -67,13 +67,20 @@ export default function DepartmentsPage() {
   const fetchDeptsAndDoctors = () => {
     setLoading(true);
     const targetHospId = user?.hospitalId || '';
+    const savedToken = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
+    const authHeader: Record<string, string> = savedToken ? { Authorization: `Bearer ${savedToken}` } : {};
+
     Promise.all([
-      fetch('/api/departments').then(res => res.json()),
-      fetch(`/api/admin/doctors?hospitalId=${targetHospId}`).then(res => res.json())
+      fetch('/api/departments', { headers: authHeader }).then(res => res.json()),
+      fetch(`/api/admin/doctors?hospitalId=${targetHospId}`, { headers: authHeader }).then(res => res.json())
     ])
       .then(([deptRes, docRes]) => {
-        setDepartments(deptRes.departments || []);
-        setDoctors(docRes.doctors || []);
+        if (deptRes.departments && deptRes.departments.length > 0) {
+          setDepartments(deptRes.departments);
+        }
+        if (docRes.doctors) {
+          setDoctors(docRes.doctors);
+        }
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
@@ -87,17 +94,29 @@ export default function DepartmentsPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
+      const savedToken = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
       const res = await fetch('/api/departments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(savedToken ? { Authorization: `Bearer ${savedToken}` } : {})
+        },
         body: JSON.stringify(deptFormData)
       });
-      if (res.ok) {
+      const data = await res.json();
+      if (res.ok && data.department) {
         setShowDeptModal(false);
         setDeptFormData({ code: '', name: '', description: '', location: '', contact: '' });
+        setDepartments(prev => {
+          const deptItem = data.department;
+          const exists = prev.some(d => d.code === deptItem.code || d.id === deptItem.id);
+          if (exists) {
+            return prev.map(d => (d.code === deptItem.code || d.id === deptItem.id) ? { ...d, ...deptItem } : d);
+          }
+          return [...prev, deptItem];
+        });
         fetchDeptsAndDoctors();
       } else {
-        const data = await res.json();
         alert(data.error || 'Failed to create department');
       }
     } catch (err) {
