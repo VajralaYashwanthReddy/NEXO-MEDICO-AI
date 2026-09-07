@@ -63,7 +63,7 @@ export default function PatientSelfRegistrationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8 w-full -m-6 p-6">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center py-8 px-4 sm:px-6 lg:px-8 w-full select-none overflow-x-hidden">
       <div className="max-w-xl mx-auto w-full">
         {/* Header */}
         <div className="text-center mb-6">
