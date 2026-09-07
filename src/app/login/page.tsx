@@ -184,16 +184,6 @@ export default function LoginPage() {
             </p>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
-                onClick={() => quickDemoLogin('superadmin@nexomedico.ai')}
-                className="p-2.5 bg-slate-800/80 hover:bg-cyan-950/60 border border-slate-700/60 hover:border-cyan-700 rounded-xl text-left transition-all col-span-2"
-              >
-                <span className="font-extrabold text-cyan-300 block flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-cyan-400" /> Platform Admin (Master Super Admin)
-                </span>
-                <span className="text-[11px] text-slate-400">superadmin@nexomedico.ai</span>
-              </button>
-
-              <button
                 onClick={() => quickDemoLogin('admin@metrohospital.org')}
                 className="p-2.5 bg-slate-800/80 hover:bg-blue-950/60 border border-slate-700/60 hover:border-blue-700 rounded-xl text-left transition-all"
               >

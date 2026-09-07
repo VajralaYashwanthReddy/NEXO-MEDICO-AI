@@ -797,16 +797,6 @@ export default function LandingPage() {
 
             <div className="grid grid-cols-2 gap-3 text-xs">
               <button
-                onClick={() => handleQuickRoleLogin('superadmin@nexomedico.ai', '/admin/dashboard')}
-                className="p-3 bg-cyan-50/70 hover:bg-cyan-100 border border-cyan-200 rounded-2xl text-left space-y-1 transition-all"
-              >
-                <span className="font-black text-cyan-900 block flex items-center gap-1">
-                  🌐 Platform Admin
-                </span>
-                <span className="text-[10px] font-semibold text-cyan-800">Master Application Super Admin</span>
-              </button>
-
-              <button
                 onClick={() => handleQuickRoleLogin('admin@metrohospital.org', '/admin/dashboard')}
                 className="p-3 bg-blue-50/70 hover:bg-blue-100 border border-blue-200 rounded-2xl text-left space-y-1 transition-all"
               >
