@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { ContactUsModal } from '@/components/ContactUsModal';
+import { MockOtpModal } from '@/components/SecurityVerification';
 
 export default function LandingPage() {
   const { user, login } = useAuth();
@@ -50,6 +51,11 @@ export default function LandingPage() {
   const [showGetStartedModal, setShowGetStartedModal] = useState(false);
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterSubscribed, setNewsletterSubscribed] = useState(false);
+
+  // Quick Demo Login OTP states
+  const [pendingDemoLogin, setPendingDemoLogin] = useState<{ email: string; redirect: string } | null>(null);
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
 
   const [stats, setStats] = useState<any>({
     hospitals: '126+',
@@ -61,12 +67,12 @@ export default function LandingPage() {
   });
 
   useEffect(() => {
-    fetch('/api/admin/platform-analytics')
+    fetch('/api/admin/system/metrics')
       .then(res => res.json())
       .then(data => {
-        if (data.summaryCards) {
+        if (data?.summaryCards) {
           setStats({
-            hospitals: data.summaryCards.totalHospitals > 1 ? `${data.summaryCards.totalHospitals}` : '126+',
+            hospitals: data.summaryCards.totalHospitals > 5 ? `${data.summaryCards.totalHospitals}` : '126+',
             patients: data.summaryCards.totalPatients > 5 ? `${data.summaryCards.totalPatients}` : '284K+',
             doctors: data.summaryCards.totalDoctors > 5 ? `${data.summaryCards.totalDoctors}` : '8.4K+',
             appointments: data.summaryCards.totalAppointments > 5 ? `${data.summaryCards.totalAppointments}` : '18K+',
@@ -78,20 +84,30 @@ export default function LandingPage() {
       .catch(err => console.error(err));
   }, []);
 
-  const handleQuickRoleLogin = async (demoEmail: string, roleRedirect: string) => {
+  const handleQuickRoleLogin = (demoEmail: string, roleRedirect: string) => {
+    setPendingDemoLogin({ email: demoEmail, redirect: roleRedirect });
+    setShowOtpModal(true);
+  };
+
+  const handleOtpSuccess = async () => {
+    if (!pendingDemoLogin) return;
+    setOtpLoading(true);
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: demoEmail, password: 'password123' })
+        body: JSON.stringify({ email: pendingDemoLogin.email, password: 'password123' })
       });
       const data = await res.json();
       if (res.ok) {
         login(data.token, data.user);
-        window.location.href = roleRedirect;
+        window.location.href = pendingDemoLogin.redirect;
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setOtpLoading(false);
+      setShowOtpModal(false);
     }
   };
 
@@ -844,6 +860,16 @@ export default function LandingPage() {
 
       {/* CONTACT US SUPPORT MODAL ON LANDING PAGE */}
       <ContactUsModal isOpen={showContactModal} onClose={() => setShowContactModal(false)} />
+
+      {/* MOCK 2FA OTP MODAL FOR QUICK ROLE LOGINS */}
+      <MockOtpModal
+        isOpen={showOtpModal}
+        onClose={() => setShowOtpModal(false)}
+        onSuccess={handleOtpSuccess}
+        destinationText={pendingDemoLogin?.email || 'Quick Role Account'}
+        title="2FA Demo Security Verification"
+        loading={otpLoading}
+      />
     </div>
   );
 }

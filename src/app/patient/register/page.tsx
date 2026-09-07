@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
 import { UserCheck, ShieldCheck, ArrowRight, Stethoscope, CheckCircle2, Lock, Mail, Phone, HeartPulse } from 'lucide-react';
+import { VisualCaptcha, MockOtpModal } from '@/components/SecurityVerification';
 
 export default function PatientSelfRegistrationPage() {
   const [formData, setFormData] = useState({
@@ -22,6 +23,13 @@ export default function PatientSelfRegistrationPage() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Security CAPTCHA & OTP states
+  const [captchaInput, setCaptchaInput] = useState('');
+  const [expectedCaptcha, setExpectedCaptcha] = useState('');
+  const [captchaError, setCaptchaError] = useState('');
+  const [showOtpModal, setShowOtpModal] = useState(false);
+
   const { login } = useAuth();
   const router = useRouter();
 
@@ -29,10 +37,28 @@ export default function PatientSelfRegistrationPage() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const initiateRegistrationSequence = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setCaptchaError('');
+
+    if (!formData.fullName || !formData.email || !formData.password) {
+      setError('Please fill in required fields (Name, Email, Password).');
+      return;
+    }
+
+    if (!captchaInput || captchaInput.trim().toUpperCase() !== expectedCaptcha.trim().toUpperCase()) {
+      setCaptchaError('Invalid CAPTCHA code. Please check characters & try again.');
+      return;
+    }
+
+    setShowOtpModal(true);
+  };
+
+  const handleOtpSuccess = async () => {
+    setShowOtpModal(false);
     setLoading(true);
+    setError('');
 
     try {
       const res = await fetch('/api/auth/register-patient', {
@@ -83,7 +109,7 @@ export default function PatientSelfRegistrationPage() {
             </div>
           )}
 
-          <form onSubmit={handleRegister} className="space-y-4 text-xs">
+          <form onSubmit={initiateRegistrationSequence} className="space-y-4 text-xs">
             <h3 className="font-bold text-cyan-400 text-xs uppercase tracking-wider border-b border-slate-800 pb-2">Account Login Details</h3>
             
             <div>
@@ -217,6 +243,17 @@ export default function PatientSelfRegistrationPage() {
               />
             </div>
 
+            {/* Visual Security Captcha */}
+            <div className="pt-2">
+              <VisualCaptcha
+                userInput={captchaInput}
+                setUserInput={setCaptchaInput}
+                onCodeChange={(code) => setExpectedCaptcha(code)}
+                error={captchaError}
+                theme="dark"
+              />
+            </div>
+
             <button
               type="submit"
               disabled={loading}
@@ -226,6 +263,16 @@ export default function PatientSelfRegistrationPage() {
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
+
+          {/* 2FA Mock OTP Verification Modal */}
+          <MockOtpModal
+            isOpen={showOtpModal}
+            onClose={() => setShowOtpModal(false)}
+            onSuccess={handleOtpSuccess}
+            destinationText={formData.email || formData.fullName}
+            title="Patient Security 2FA Verification"
+            loading={loading}
+          />
 
           <div className="mt-6 text-center border-t border-slate-800 pt-4">
             <p className="text-xs text-slate-400">

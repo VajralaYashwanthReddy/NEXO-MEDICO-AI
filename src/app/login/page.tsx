@@ -19,19 +19,49 @@ import {
   Globe,
   Plus
 } from 'lucide-react';
+import { VisualCaptcha, MockOtpModal } from '@/components/SecurityVerification';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Security CAPTCHA & OTP states
+  const [captchaInput, setCaptchaInput] = useState('');
+  const [expectedCaptcha, setExpectedCaptcha] = useState('');
+  const [captchaError, setCaptchaError] = useState('');
+  const [showOtpModal, setShowOtpModal] = useState(false);
+
   const { login } = useAuth();
   const router = useRouter();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const initiateLoginSequence = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setCaptchaError('');
+
+    if (!captchaInput || captchaInput.trim().toUpperCase() !== expectedCaptcha.trim().toUpperCase()) {
+      setCaptchaError('Invalid CAPTCHA code. Please check characters & try again.');
+      return;
+    }
+
+    // CAPTCHA passed, trigger 2FA OTP modal
+    setShowOtpModal(true);
+  };
+
+  const quickDemoLogin = (demoEmail: string) => {
+    setEmail(demoEmail);
+    setPassword('password123');
+    setError('');
+    setCaptchaError('');
+    setShowOtpModal(true);
+  };
+
+  const handleOtpSuccess = async () => {
+    setShowOtpModal(false);
     setLoading(true);
+    setError('');
 
     try {
       const res = await fetch('/api/auth/login', {
@@ -60,35 +90,6 @@ export default function LoginPage() {
       } else {
         router.push('/patient/dashboard');
       }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const quickDemoLogin = async (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword('password123');
-    setLoading(true);
-    setError('');
-
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: demoEmail, password: 'password123' })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      login(data.token, data.user);
-      if (data.user.role === 'HOSPITAL_ADMIN' || data.user.role === 'SUPER_ADMIN' || data.user.role === 'HR_ADMIN' || data.user.role === 'RECEPTIONIST' || data.user.role === 'STAFF') router.push('/admin/dashboard');
-      else if (data.user.role === 'DOCTOR') router.push('/doctor/dashboard');
-      else if (data.user.role === 'PHARMACIST') router.push('/pharmacy/dashboard');
-      else if (data.user.role === 'LAB_TECH') router.push('/laboratory/dashboard');
-      else if (data.user.role === 'NURSE') router.push('/nurse/dashboard');
-      else router.push('/patient/dashboard');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -134,7 +135,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form className="space-y-4" onSubmit={handleLogin}>
+          <form className="space-y-4" onSubmit={initiateLoginSequence}>
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
                 Email Address or Universal Patient ID (NEXO-PAT-...)
@@ -167,15 +168,33 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {/* Visual Security Captcha */}
+            <VisualCaptcha
+              userInput={captchaInput}
+              setUserInput={setCaptchaInput}
+              onCodeChange={(code) => setExpectedCaptcha(code)}
+              error={captchaError}
+              theme="dark"
+            />
+
             <button
               type="submit"
               disabled={loading}
               className="w-full py-3 px-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
             >
-              {loading ? 'Authenticating...' : 'Sign In to Portal'}
+              {loading ? 'Authenticating...' : 'Sign In with 2FA Security'}
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
+
+          {/* 2FA Mock OTP Verification Modal */}
+          <MockOtpModal
+            isOpen={showOtpModal}
+            onClose={() => setShowOtpModal(false)}
+            onSuccess={handleOtpSuccess}
+            destinationText={email || 'Universal Health Account'}
+            loading={loading}
+          />
 
           {/* Quick Demo Accounts Selection */}
           <div className="mt-6 border-t border-slate-800 pt-5">

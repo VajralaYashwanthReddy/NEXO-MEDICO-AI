@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
 import { Building2, CheckCircle2, ChevronRight, ChevronLeft, Shield, Stethoscope } from 'lucide-react';
+import { VisualCaptcha, MockOtpModal } from '@/components/SecurityVerification';
 
 export default function HospitalRegisterWizard() {
   const [step, setStep] = useState(1);
@@ -28,6 +29,13 @@ export default function HospitalRegisterWizard() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Security CAPTCHA & OTP states
+  const [captchaInput, setCaptchaInput] = useState('');
+  const [expectedCaptcha, setExpectedCaptcha] = useState('');
+  const [captchaError, setCaptchaError] = useState('');
+  const [showOtpModal, setShowOtpModal] = useState(false);
+
   const { login } = useAuth();
   const router = useRouter();
 
@@ -35,10 +43,33 @@ export default function HospitalRegisterWizard() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const initiateRegistrationSequence = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setCaptchaError('');
+
+    if (step < 4) {
+      setStep(step + 1);
+      return;
+    }
+
+    if (!formData.adminName || !formData.adminEmail || !formData.adminPassword) {
+      setError('Please fill out all required admin account fields.');
+      return;
+    }
+
+    if (!captchaInput || captchaInput.trim().toUpperCase() !== expectedCaptcha.trim().toUpperCase()) {
+      setCaptchaError('Invalid CAPTCHA code. Please check characters and try again.');
+      return;
+    }
+
+    setShowOtpModal(true);
+  };
+
+  const handleOtpSuccess = async () => {
+    setShowOtpModal(false);
     setLoading(true);
+    setError('');
 
     try {
       const res = await fetch('/api/hospitals/register', {
@@ -112,7 +143,7 @@ export default function HospitalRegisterWizard() {
             </div>
           )}
 
-          <form onSubmit={handleRegister}>
+          <form onSubmit={initiateRegistrationSequence}>
             {/* STEP 1: Basic Hospital Info */}
             {step === 1 && (
               <div className="space-y-4">
@@ -327,8 +358,28 @@ export default function HospitalRegisterWizard() {
                     className="mt-1 w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-sm text-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
                   />
                 </div>
+
+                <div className="pt-2">
+                  <VisualCaptcha
+                    userInput={captchaInput}
+                    setUserInput={setCaptchaInput}
+                    onCodeChange={(code) => setExpectedCaptcha(code)}
+                    error={captchaError}
+                    theme="dark"
+                  />
+                </div>
               </div>
             )}
+
+            {/* 2FA Mock OTP Verification Modal */}
+            <MockOtpModal
+              isOpen={showOtpModal}
+              onClose={() => setShowOtpModal(false)}
+              onSuccess={handleOtpSuccess}
+              destinationText={formData.adminEmail || formData.hospitalName}
+              title="Hospital Organization 2FA Verification"
+              loading={loading}
+            />
 
             {/* Wizard Navigation Buttons */}
             <div className="flex items-center justify-between mt-8 pt-4 border-t border-slate-800">
