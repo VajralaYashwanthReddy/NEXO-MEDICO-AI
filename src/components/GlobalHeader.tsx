@@ -2,10 +2,11 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { Search, Bell, User, X, Menu, Edit3, KeyRound, LogOut, CheckCircle2, ShieldCheck, Building2, Mail } from 'lucide-react';
+import { Search, Bell, User, X, Menu, Edit3, KeyRound, LogOut, CheckCircle2, ShieldCheck, Building2, Mail, QrCode } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { EmergencyCodeRedBanner } from '@/components/EmergencyCodeRedBanner';
 import { EmergencyQrScannerModal } from '@/components/EmergencyQrScannerModal';
+import { PatientEmergencyQrModal } from '@/components/PatientEmergencyQrModal';
 import { Siren } from 'lucide-react';
 
 interface GlobalHeaderProps {
@@ -16,6 +17,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
   const { user, notifications, logout, updateUser, clearNotifications } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
+  const [showQrPassportModal, setShowQrPassportModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -258,6 +260,16 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
                   className="w-full px-3 py-2 bg-slate-100 hover:bg-purple-50 text-slate-800 hover:text-purple-900 font-extrabold rounded-xl border border-slate-200 flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <KeyRound className="w-4 h-4 text-purple-600" /> Change Password
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowProfileCard(false);
+                    setShowQrPassportModal(true);
+                  }}
+                  className="w-full px-3 py-2 bg-slate-100 hover:bg-rose-50 text-slate-800 hover:text-rose-900 font-extrabold rounded-xl border border-slate-200 flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <QrCode className="w-4 h-4 text-rose-600" /> Emergency QR Passport
                 </button>
 
                 <button
@@ -535,6 +547,23 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
     <EmergencyQrScannerModal
       isOpen={showScannerModal}
       onClose={() => setShowScannerModal(false)}
+    />
+
+    {/* PATIENT EMERGENCY QR PASSPORT MODAL */}
+    <PatientEmergencyQrModal
+      isOpen={showQrPassportModal}
+      onClose={() => setShowQrPassportModal(false)}
+      patientData={{
+        patientId: (user as any)?.patientCode || user?.id || 'NEXO-PAT-000002',
+        fullName: user?.name || 'Patient User',
+        bloodGroup: (user as any)?.bloodGroup || 'O+',
+        phone: (user as any)?.phone || '+1 (555) 012-3456',
+        allergies: (user as any)?.allergies || 'Penicillin, Sulfa, Peanuts',
+        conditions: (user as any)?.conditions || 'Type 1 Diabetes, Mild Asthma',
+        emergencyContactName: (user as any)?.emergencyContactName || 'Emergency Contact',
+        emergencyContactPhone: (user as any)?.emergencyContactPhone || '+1 (555) 012-3456',
+        resuscitationStatus: 'Full Code / Advance Directive Registered'
+      }}
     />
     </>
   );
