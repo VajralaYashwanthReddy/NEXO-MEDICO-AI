@@ -1,33 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
-
-const sampleDoctors = [
-  { id: 'doc-01', employeeId: 'DOC-001', qualification: 'MD, DM (Cardiology)', specialization: 'Cardiology', registrationNo: 'REG-MED-8812', experienceYears: 12, consultationFee: 150.0, status: 'ACTIVE', user: { id: 'usr-doc-01', name: 'Dr. Sarah Smith', email: 'dr.smith@metrohospital.org' }, department: { id: 'dept-card-03', name: 'Cardiology', code: 'CARD' } },
-  { id: 'doc-02', employeeId: 'DOC-002', qualification: 'MBBS, MD (Neurology)', specialization: 'Neurology', registrationNo: 'REG-MED-9943', experienceYears: 10, consultationFee: 180.0, status: 'ACTIVE', user: { id: 'usr-doc-02', name: 'Dr. Rajesh Patel', email: 'dr.patel@metrohospital.org' }, department: { id: 'dept-neur-04', name: 'Neurology', code: 'NEUR' } }
-];
+import { getGlobalDoctors } from '@/lib/doctorStore';
 
 export async function GET(req: NextRequest) {
   try {
     const user = getUserFromRequest(req);
-    const hospitalId = user?.hospitalId || 'hosp-metro-01';
+    const { searchParams } = new URL(req.url);
+    const search = (searchParams.get('q') || '').toLowerCase().trim();
+    const hospitalId = searchParams.get('hospitalId') || user?.hospitalId || '';
 
-    let doctors: any[] = [];
+    let dbDoctors: any[] = [];
     try {
-      doctors = await prisma.doctorProfile.findMany({
-        where: { hospitalId },
-        include: {
-          user: true,
-          department: true
+      dbDoctors = await prisma.doctorProfile.findMany({
+        where: {
+          ...(hospitalId ? { hospitalId } : {})
         },
-        orderBy: { employeeId: 'asc' }
+        include: {
+          user: { select: { id: true, name: true, email: true, status: true } },
+          hospital: { select: { id: true, name: true, city: true, phone: true } },
+          department: { select: { id: true, name: true, code: true } }
+        },
+        orderBy: { id: 'desc' }
       });
     } catch (dbErr: any) {
-      console.warn('Prisma doctors query skipped, serving fallback list:', dbErr.message);
+      console.warn('Prisma doctors query skipped in GET /api/doctors:', dbErr.message);
     }
 
-    return NextResponse.json({ doctors: doctors.length > 0 ? doctors : sampleDoctors });
+    const storeDoctors = getGlobalDoctors();
+    const map = new Map<string, any>();
+
+    for (const d of storeDoctors) {
+      map.set(d.id, d);
+      if (d.registrationNo) map.set(d.registrationNo, d);
+    }
+
+    for (const d of dbDoctors) {
+      map.set(d.id, d);
+    }
+
+    let allDoctors = Array.from(new Set(map.values()));
+
+    if (hospitalId) {
+      allDoctors = allDoctors.filter(d => d.hospitalId === hospitalId);
+    }
+
+    if (search) {
+      allDoctors = allDoctors.filter(d =>
+        (d.specialization && d.specialization.toLowerCase().includes(search)) ||
+        (d.user?.name && d.user.name.toLowerCase().includes(search)) ||
+        (d.user?.email && d.user.email.toLowerCase().includes(search)) ||
+        (d.hospital?.name && d.hospital.name.toLowerCase().includes(search))
+      );
+    }
+
+    return NextResponse.json({ doctors: allDoctors });
   } catch (err: any) {
-    return NextResponse.json({ doctors: sampleDoctors });
+    return NextResponse.json({ doctors: getGlobalDoctors() });
   }
 }
+

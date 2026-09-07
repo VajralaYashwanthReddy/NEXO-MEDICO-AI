@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { getGlobalHospitals } from '@/lib/hospitalStore';
+import { getGlobalDoctors } from '@/lib/doctorStore';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -56,6 +57,7 @@ export async function GET(req: NextRequest) {
   }
 
   const totalRegisteredHospitals = Math.max(hospitalsCount, getGlobalHospitals().length);
+  const totalRegisteredDoctors = Math.max(doctorsCount, getGlobalDoctors().length);
 
   const hospitalGrowth = [
     { date: 'Jan', count: 1 },
@@ -109,8 +111,8 @@ export async function GET(req: NextRequest) {
       totalUsers: usersCount || 18,
       activeUsers: activeUsersCount || 18,
       totalPatients: patientsCount || 24,
-      totalDoctors: doctorsCount || 12,
-      totalHealthcareStaff: (doctorsCount || 12) + (nursesCount || 16) + (staffCount || 8),
+      totalDoctors: totalRegisteredDoctors,
+      totalHealthcareStaff: totalRegisteredDoctors + (nursesCount || 16) + (staffCount || 8),
       totalAppointments: appointmentsCount || 34,
       currentAdmissions: admissionsCount || 15,
       totalPrescriptions: prescriptionsCount || 42,
