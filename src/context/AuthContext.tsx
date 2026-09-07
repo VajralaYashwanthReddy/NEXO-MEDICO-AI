@@ -128,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     setUser(null);
     fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/login');
+    router.push('/');
   };
 
   const updateUser = (updatedData: Partial<UserContext>, newToken?: string) => {
