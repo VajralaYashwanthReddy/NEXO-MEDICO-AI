@@ -77,9 +77,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Listen to SSE live notifications
+  // Listen to SSE & real-time broadcast notifications
   useEffect(() => {
     if (!user) return;
+
+    // Fetch initial & periodic broadcast notifications
+    const syncNotifications = () => {
+      fetch(`/api/admin/broadcast-notifications?role=${user.role}&hospitalId=${user.hospitalId || ''}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data?.notifications && Array.isArray(data.notifications)) {
+            const mapped: NotificationItem[] = data.notifications.map((n: any) => ({
+              id: n.id,
+              event: n.title,
+              message: `[${n.severity || 'INFO'}] ${n.message} (From: ${n.senderName || 'Platform Admin'})`,
+              timestamp: n.timestamp
+            }));
+
+            setNotifications(prev => {
+              // Merge deduplicated
+              const existingIds = new Set(prev.map(p => p.id));
+              const newItems = mapped.filter(m => !existingIds.has(m.id));
+              return [...newItems, ...prev].slice(0, 30);
+            });
+          }
+        })
+        .catch(err => console.error('Failed to sync broadcast notifications:', err));
+    };
+
+    syncNotifications();
+    const interval = setInterval(syncNotifications, 4000);
 
     try {
       const eventSource = new EventSource('/api/events');
@@ -87,7 +114,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.event !== 'CONNECTED') {
+          if (data.event === 'BROADCAST_NOTIFICATION' && data.payload) {
+            const n = data.payload;
+            if (n.targetRole === 'ALL' || n.targetRole === user.role) {
+              setNotifications(prev => [
+                {
+                  id: n.id || Math.random().toString(),
+                  event: n.title || 'Broadcast Notification',
+                  message: `[${n.severity || 'INFO'}] ${n.message} (From: ${n.senderName || 'Platform Admin'})`,
+                  timestamp: n.timestamp || new Date().toISOString()
+                },
+                ...prev.slice(0, 29)
+              ]);
+            }
+          } else if (data.event !== 'CONNECTED') {
             if (!data.hospitalId || data.hospitalId === user.hospitalId) {
               setNotifications(prev => [
                 {
@@ -96,7 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   message: getEventMessage(data.event, data.payload),
                   timestamp: data.timestamp || new Date().toISOString()
                 },
-                ...prev.slice(0, 19)
+                ...prev.slice(0, 29)
               ]);
             }
           }
@@ -106,10 +146,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       return () => {
+        clearInterval(interval);
         eventSource.close();
       };
     } catch (e) {
-      console.error('EventSource failed:', e);
+      return () => clearInterval(interval);
     }
   }, [user]);
 

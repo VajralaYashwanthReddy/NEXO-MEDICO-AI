@@ -269,24 +269,29 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden text-xs">
-              <div className="p-3 bg-slate-900 text-white flex items-center justify-between">
-                <span className="font-bold">Real-time Notifications</span>
-                <span className="text-[10px] bg-cyan-500 text-white px-2 py-0.5 rounded-full font-semibold">
-                  {notifications.length} New
+            <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 overflow-hidden text-xs">
+              <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-cyan-400" />
+                  <span className="font-bold">Real-time Platform Notifications</span>
+                </div>
+                <span className="text-[10px] bg-cyan-500 text-white px-2.5 py-0.5 rounded-full font-bold shadow-xs">
+                  {notifications.length} Active
                 </span>
               </div>
-              <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 custom-scrollbar">
+              <div className="max-h-96 overflow-y-auto divide-y divide-slate-100 custom-scrollbar">
                 {notifications.length === 0 ? (
-                  <p className="p-4 text-center text-slate-400">No recent notifications</p>
+                  <p className="p-6 text-center text-slate-400 font-medium">No recent notifications</p>
                 ) : (
                   notifications.map((n) => (
-                    <div key={n.id} className="p-3 hover:bg-slate-50 transition-colors">
-                      <p className="font-semibold text-slate-800">{n.event.replace('_', ' ')}</p>
-                      <p className="text-slate-600 mt-0.5">{n.message}</p>
-                      <span className="text-[10px] text-slate-400 mt-1 block">
-                        {new Date(n.timestamp).toLocaleTimeString()}
-                      </span>
+                    <div key={n.id} className="p-3.5 hover:bg-slate-50 transition-colors space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-bold text-slate-900 text-xs">{n.event.replace('_', ' ')}</p>
+                        <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                          {new Date(n.timestamp).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <p className="text-slate-600 text-xs leading-relaxed">{n.message}</p>
                     </div>
                   ))
                 )}
