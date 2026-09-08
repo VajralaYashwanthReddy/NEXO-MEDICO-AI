@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Sparkles, X, Send, Ticket, KeyRound, UserPlus, Stethoscope, CheckCircle2, Image as ImageIcon, Phone, Mail, User, Upload, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { Bot, Sparkles, X, Send, Ticket, KeyRound, UserPlus, Stethoscope, CheckCircle2, Image as ImageIcon, Phone, Mail, User, Upload, Mic, MicOff, Volume2, VolumeX, GripVertical, Move } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export function FloatingAiChatbot() {
@@ -19,6 +19,70 @@ export function FloatingAiChatbot() {
   ]);
   const [thinking, setThinking] = useState(false);
   const [showTicketForm, setShowTicketForm] = useState(false);
+
+  // Draggable Position State
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ startX: number; startY: number; initialX: number; initialY: number }>({
+    startX: 0,
+    startY: 0,
+    initialX: 0,
+    initialY: 0
+  });
+
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+
+    const currentX = position ? position.x : (typeof window !== 'undefined' ? window.innerWidth - (isOpen ? 400 : 180) : 100);
+    const currentY = position ? position.y : (typeof window !== 'undefined' ? window.innerHeight - (isOpen ? 600 : 80) : 100);
+
+    dragStartRef.current = {
+      startX: clientX,
+      startY: clientY,
+      initialX: currentX,
+      initialY: currentY
+    };
+
+    setIsDragging(true);
+  };
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDragging) return;
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+
+      const deltaX = clientX - dragStartRef.current.startX;
+      const deltaY = clientY - dragStartRef.current.startY;
+
+      let newX = dragStartRef.current.initialX + deltaX;
+      let newY = dragStartRef.current.initialY + deltaY;
+
+      newX = Math.max(10, Math.min(window.innerWidth - (isOpen ? 340 : 120), newX));
+      newY = Math.max(10, Math.min(window.innerHeight - (isOpen ? 540 : 60), newY));
+
+      setPosition({ x: newX, y: newY });
+    };
+
+    const handleEnd = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleEnd);
+      window.addEventListener('touchmove', handleMove);
+      window.addEventListener('touchend', handleEnd);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEnd);
+    };
+  }, [isDragging, isOpen]);
 
   // Ticket Form State
   const [contactName, setContactName] = useState('');
@@ -235,26 +299,37 @@ Our platform super admin team has received your ticket and will process it live 
     <>
       {/* ----------------- EXPANDED FLOATING CHATBOT DRAWER ----------------- */}
       {isOpen && (
-        <div className="fixed bottom-20 right-6 z-50 w-80 sm:w-96 h-[560px] bg-white rounded-3xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-200 select-none text-slate-900">
-          {/* Chatbot Header */}
-          <div className="bg-gradient-to-r from-purple-900 via-indigo-950 to-slate-900 p-4 text-white flex items-center justify-between border-b border-purple-800/40 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-md">
-                <Bot className="w-5 h-5 text-white" />
+        <div
+          style={position ? { left: `${position.x}px`, top: `${position.y}px`, bottom: 'auto', right: 'auto' } : {}}
+          className="fixed bottom-20 right-6 z-50 w-80 sm:w-96 h-[560px] bg-white rounded-3xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-200 select-none text-slate-900"
+        >
+          {/* Chatbot Header (Draggable Handle) */}
+          <div
+            onMouseDown={handleDragStart}
+            onTouchStart={handleDragStart}
+            className="bg-gradient-to-r from-purple-900 via-indigo-950 to-slate-900 p-3.5 text-white flex items-center justify-between border-b border-purple-800/40 shrink-0 cursor-move active:cursor-grabbing"
+            title="Click & Drag to reposition AI Chatbot anywhere on screen"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="p-1 text-slate-400 hover:text-white cursor-grab active:cursor-grabbing" title="Drag Handle">
+                <GripVertical className="w-5 h-5 text-purple-400" />
+              </div>
+              <div className="w-8 h-8 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-md shrink-0">
+                <Bot className="w-4 h-4 text-white" />
               </div>
               <div>
                 <h3 className="font-black text-white text-xs flex items-center gap-1">
                   Nexo AI Platform & Support Bot <Sparkles className="w-3 h-3 text-cyan-400" />
                 </h3>
                 <span className="text-[9px] text-emerald-400 font-extrabold uppercase tracking-wider block flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> 24/7 Real-Time Support Active
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> 24/7 Real-Time Support (Movable)
                 </span>
               </div>
             </div>
 
             <button
               onClick={() => setIsOpen(false)}
-              className="p-1.5 rounded-xl hover:bg-white/10 text-slate-300 hover:text-white transition-all"
+              className="p-1.5 rounded-xl hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -516,19 +591,35 @@ Our platform super admin team has received your ticket and will process it live 
       )}
 
       {/* ----------------- SMALL FLOATING ROBOT AI BOT BUTTON ----------------- */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 z-50 p-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-full shadow-2xl flex items-center justify-center gap-2 group transition-all transform hover:scale-105 ring-4 ring-purple-400/30"
-        title="Nexo AI Platform & Support Bot"
+      <div
+        style={position ? { left: `${position.x}px`, top: `${position.y}px`, bottom: 'auto', right: 'auto' } : {}}
+        className="fixed bottom-6 right-6 z-50 flex items-center bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-full shadow-2xl ring-4 ring-purple-400/30 select-none"
       >
-        <div className="relative">
-          <Bot className="w-6 h-6 text-white group-hover:rotate-12 transition-transform" />
-          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-900 animate-pulse" />
+        {/* Drag handle grip */}
+        <div
+          onMouseDown={handleDragStart}
+          onTouchStart={handleDragStart}
+          className="pl-2.5 py-3.5 cursor-grab active:cursor-grabbing text-purple-200 hover:text-white flex items-center justify-center"
+          title="Click & Drag to reposition AI Bot anywhere"
+        >
+          <GripVertical className="w-4 h-4" />
         </div>
-        <span className="text-xs font-black tracking-tight hidden sm:inline pr-1">
-          Nexo AI Bot
-        </span>
-      </button>
+
+        {/* Toggle Chatbot Button */}
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="py-3.5 pr-4 pl-1 text-white flex items-center justify-center gap-2 group transition-all cursor-pointer"
+          title="Click to Open/Close Nexo AI Platform & Support Bot"
+        >
+          <div className="relative">
+            <Bot className="w-5 h-5 text-white group-hover:rotate-12 transition-transform" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-900 animate-pulse" />
+          </div>
+          <span className="text-xs font-black tracking-tight hidden sm:inline">
+            Nexo AI Bot
+          </span>
+        </button>
+      </div>
     </>
   );
 }
