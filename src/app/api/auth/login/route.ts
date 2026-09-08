@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { comparePasswords, signJwtToken } from '@/lib/auth';
+import { comparePasswords, signJwtToken, formatNameFromEmail } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
-import { getGlobalPatients } from '@/lib/patientStore';
+import { getGlobalPatients, addGlobalPatient } from '@/lib/patientStore';
 
 export async function POST(req: NextRequest) {
   let email = '';
@@ -59,10 +59,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid Email / Universal Patient ID or password' }, { status: 401 });
     }
 
+    const sanitizedName = (user.name && user.name !== 'Patient Account' && user.name !== 'Registered Patient')
+      ? user.name
+      : formatNameFromEmail(user.email);
+
     const payload = {
       id: user.id,
       email: user.email,
-      name: user.name,
+      name: sanitizedName,
       role: user.role,
       hospitalId: user.hospitalId,
       departmentId: user.departmentId
@@ -87,7 +91,7 @@ export async function POST(req: NextRequest) {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        name: sanitizedName,
         role: user.role,
         hospitalId: user.hospitalId,
         hospitalName: user.hospital?.name || 'Metropolitan General Hospital'
@@ -112,13 +116,14 @@ export async function POST(req: NextRequest) {
     const globalPatients = getGlobalPatients();
 
     // Check if patient exists in Patient Store
-    const patientMatch = globalPatients.find(p =>
+    let patientMatch = globalPatients.find(p =>
       p.email.toLowerCase() === emailLower ||
-      p.patientCode.toUpperCase() === inputClean.toUpperCase()
+      p.patientCode.toUpperCase() === inputClean.toUpperCase() ||
+      (p.user?.email && p.user.email.toLowerCase() === emailLower)
     );
 
     let role = 'PATIENT';
-    let name = 'Registered Patient';
+    let name = formatNameFromEmail(inputClean);
     let hospitalId: string | null = 'hosp-metro-01';
     let hospitalName = 'Metropolitan General Hospital';
 
@@ -150,7 +155,16 @@ export async function POST(req: NextRequest) {
     } else {
       // Default for all personal/registered patient accounts
       role = 'PATIENT';
-      name = 'Patient Account';
+      name = formatNameFromEmail(inputClean);
+
+      patientMatch = addGlobalPatient({
+        fullName: name,
+        email: emailLower,
+        phone: '+1 (555) 012-3456',
+        gender: 'Male',
+        dob: '2004-05-07',
+        bloodGroup: 'O+'
+      });
     }
 
     const fallbackUser = {

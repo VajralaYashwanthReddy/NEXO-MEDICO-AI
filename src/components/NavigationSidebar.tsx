@@ -370,7 +370,13 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({ isOpenMobi
 
           <div className="flex items-center justify-between pt-1">
             <div className="truncate">
-              <p className="text-xs font-semibold text-slate-200 truncate">{user.name}</p>
+              <p className="text-xs font-semibold text-slate-200 truncate">
+                {(user.name && user.name !== 'Patient Account' && user.name !== 'Registered Patient')
+                  ? user.name
+                  : (user.email && user.email.includes('@')
+                      ? user.email.split('@')[0].replace(/\d+$/, '').split(/[\._\-]/).filter(Boolean).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ') || 'Patient Account'
+                      : 'Patient Account')}
+              </p>
               <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
             </div>
             <button

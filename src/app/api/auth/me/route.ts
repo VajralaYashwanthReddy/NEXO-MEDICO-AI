@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromRequest, comparePasswords, hashPassword, signJwtToken } from '@/lib/auth';
+import { getUserFromRequest, comparePasswords, hashPassword, signJwtToken, formatNameFromEmail } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { createAuditLog } from '@/lib/audit';
 
@@ -42,11 +42,15 @@ export async function GET(req: NextRequest) {
       new Set([...rolePerms, ...grantedCustomPerms].filter(p => !revokedCustomPerms.includes(p)))
     );
 
+    const sanitizedName = (user.name && user.name !== 'Patient Account' && user.name !== 'Registered Patient')
+      ? user.name
+      : formatNameFromEmail(user.email);
+
     return NextResponse.json({
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        name: sanitizedName,
         role: user.role,
         hospitalId: user.hospitalId,
         hospitalName: user.hospital?.name || null,
@@ -57,11 +61,15 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     const userPayload = getUserFromRequest(req);
     if (userPayload) {
+      const sanitizedName = (userPayload.name && userPayload.name !== 'Patient Account' && userPayload.name !== 'Registered Patient')
+        ? userPayload.name
+        : formatNameFromEmail(userPayload.email);
+
       return NextResponse.json({
         user: {
           id: userPayload.id,
           email: userPayload.email,
-          name: userPayload.name,
+          name: sanitizedName,
           role: userPayload.role,
           hospitalId: userPayload.hospitalId,
           hospitalName: userPayload.role === 'SUPER_ADMIN' ? 'All Platform Tenants' : 'Metropolitan General Hospital',

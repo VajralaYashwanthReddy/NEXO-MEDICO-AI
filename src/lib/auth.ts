@@ -48,6 +48,22 @@ export function getUserFromRequest(req: NextRequest): UserPayload | null {
   return null;
 }
 
+export function formatNameFromEmail(email: string | null | undefined): string {
+  if (!email || typeof email !== 'string' || !email.includes('@')) return 'Patient Account';
+  const handle = email.split('@')[0];
+  if (!handle) return 'Patient Account';
+
+  const cleanHandle = handle.replace(/\d+$/, '');
+  const target = cleanHandle || handle;
+
+  const parts = target.split(/[\._\-]/).filter(Boolean);
+  if (parts.length === 0) return 'Patient Account';
+
+  return parts
+    .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .join(' ');
+}
+
 // SECURITY HIERARCHY HELPER SERVICES
 export function isSuperAdmin(user: UserPayload | null): boolean {
   if (!user) return false;

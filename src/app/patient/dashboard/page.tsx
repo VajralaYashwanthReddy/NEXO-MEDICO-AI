@@ -75,10 +75,16 @@ export default function PatientDashboard() {
       .then(r => r.json())
       .then(d => {
         if (d.patients && d.patients.length > 0) {
-          const target = d.patients.find((p: any) => p.email === user?.email) || d.patients[0];
+          const userEmailLower = user?.email?.toLowerCase();
+          const target = d.patients.find((p: any) =>
+            (userEmailLower && p.email?.toLowerCase() === userEmailLower) ||
+            (userEmailLower && p.user?.email?.toLowerCase() === userEmailLower) ||
+            (p.userId && p.userId === user?.id)
+          ) || d.patients[0];
           fetch(`/api/patients/${target.id}/timeline`)
             .then(r => r.json())
-            .then(t => setPatientTimeline(t.patientTimeline));
+            .then(t => setPatientTimeline(t.patientTimeline))
+            .catch(() => setPatientTimeline(target));
         }
       })
       .catch(err => console.error(err))
@@ -194,6 +200,22 @@ export default function PatientDashboard() {
   const labCount = patient.labOrders?.length || 0;
   const admissionsCount = patient.admissions?.length || 0;
 
+  const getCleanDisplayName = () => {
+    const pName = patient.fullName;
+    if (pName && pName !== 'Patient Account' && pName !== 'Registered Patient') return pName;
+    const uName = user?.name;
+    if (uName && uName !== 'Patient Account' && uName !== 'Registered Patient') return uName;
+    const email = user?.email || patient.email;
+    if (email && email.includes('@')) {
+      const handle = email.split('@')[0].replace(/\d+$/, '');
+      const parts = handle.split(/[\._\-]/).filter(Boolean);
+      return parts.map((p: string) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ') || 'Registered Patient';
+    }
+    return 'Patient Account';
+  };
+
+  const displayName = getCleanDisplayName();
+
   return (
     <div className="space-y-6 text-slate-900 select-none max-w-7xl mx-auto">
       {/* ----------------- 1. METALLIC UNIVERSAL PATIENT IDENTITY CARD ----------------- */}
@@ -203,7 +225,7 @@ export default function PatientDashboard() {
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center font-black text-2xl text-white shadow-lg shrink-0">
-              {(patient.fullName || user?.name || 'Y')[0]}
+              {displayName.charAt(0).toUpperCase()}
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -215,7 +237,7 @@ export default function PatientDashboard() {
                 </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                {patient.fullName || user?.name || 'Yashu'}
+                {displayName}
               </h1>
               <p className="text-xs text-slate-300 font-semibold mt-1 flex flex-wrap items-center gap-3">
                 <span>Gender: <strong className="text-white">{patient.gender || 'Male'}</strong></span>

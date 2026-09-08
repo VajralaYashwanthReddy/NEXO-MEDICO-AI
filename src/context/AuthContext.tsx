@@ -52,6 +52,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const router = useRouter();
 
+  const sanitizeUser = (u: UserContext | null): UserContext | null => {
+    if (!u) return null;
+    let name = u.name;
+    if (!name || name === 'Patient Account' || name === 'Registered Patient') {
+      if (u.email && u.email.includes('@')) {
+        const handle = u.email.split('@')[0].replace(/\d+$/, '');
+        const parts = handle.split(/[\._\-]/).filter(Boolean);
+        name = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ') || 'Patient Account';
+      }
+    }
+    return { ...u, name };
+  };
+
   useEffect(() => {
     // Check saved session in client
     try {
@@ -64,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .then(res => res.json())
           .then(data => {
             if (data.user) {
-              setUser(data.user);
+              setUser(sanitizeUser(data.user));
             } else {
               logout();
             }
@@ -187,7 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('nexo_jwt', newToken);
     }
     setToken(newToken);
-    setUser(newUser);
+    setUser(sanitizeUser(newUser));
   };
 
   const logout = () => {
@@ -205,7 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('nexo_jwt', newToken);
       setToken(newToken);
     }
-    setUser(prev => (prev ? { ...prev, ...updatedData } : null));
+    setUser(prev => (prev ? sanitizeUser({ ...prev, ...updatedData }) : null));
   };
 
   const hasPermission = (code: string) => {

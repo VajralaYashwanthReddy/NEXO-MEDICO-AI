@@ -47,6 +47,13 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
 
   if (!user) return null;
 
+  const rawUserName = user.name;
+  const userDisplayName = (rawUserName && rawUserName !== 'Patient Account' && rawUserName !== 'Registered Patient')
+    ? rawUserName
+    : (user.email && user.email.includes('@')
+        ? user.email.split('@')[0].replace(/\d+$/, '').split(/[\._\-]/).filter(Boolean).map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ') || 'Patient Account'
+        : 'Patient Account');
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
@@ -208,10 +215,10 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
             className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200/80 text-xs font-bold text-slate-800 transition-all cursor-pointer shadow-2xs group"
           >
             <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-600 text-white flex items-center justify-center font-black text-xs shadow-xs group-hover:scale-105 transition-transform">
-              {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+              {userDisplayName ? userDisplayName.charAt(0).toUpperCase() : 'U'}
             </div>
             <div className="hidden sm:block text-left">
-              <span className="font-extrabold text-slate-900 block leading-tight">{user.name}</span>
+              <span className="font-extrabold text-slate-900 block leading-tight">{userDisplayName}</span>
               <span className="text-[9px] font-extrabold text-cyan-700 uppercase tracking-widest block">
                 {user.role === 'SUPER_ADMIN' ? 'PLATFORM ADMIN' : user.role === 'HOSPITAL_ADMIN' ? 'HOSPITAL ADMIN' : user.role.replace('_', ' ')}
               </span>
@@ -225,10 +232,10 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
               <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-1.5">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 text-white flex items-center justify-center font-black text-sm shadow-sm">
-                    {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                    {userDisplayName ? userDisplayName.charAt(0).toUpperCase() : 'U'}
                   </div>
                   <div className="truncate">
-                    <p className="font-extrabold text-slate-900 text-xs truncate">{user.name}</p>
+                    <p className="font-extrabold text-slate-900 text-xs truncate">{userDisplayName}</p>
                     <p className="text-[10px] text-slate-500 font-mono truncate">{user.email}</p>
                   </div>
                 </div>
