@@ -69,14 +69,21 @@ export default function PatientsManagementPage() {
   };
 
   const fetchPatients = (query = search, global = isGlobalMode, hospitalId = selectedHospitalFilter) => {
-    setLoading(true);
+    const jwt = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
     let url = `/api/patients?global=${global}&q=${encodeURIComponent(query)}`;
     if (hospitalId) {
       url += `&hospitalId=${hospitalId}`;
     }
-    fetch(url)
+    fetch(url, {
+      headers: jwt ? { Authorization: `Bearer ${jwt}` } : {}
+    })
       .then(res => res.json())
-      .then(data => setPatients(data.patients || []))
+      .then(data => {
+        if (data.patients) {
+          setPatients(data.patients);
+        }
+      })
+      .catch(err => console.error('Fetch patients error:', err))
       .finally(() => setLoading(false));
   };
 
@@ -86,7 +93,41 @@ export default function PatientsManagementPage() {
       .then(data => setHospitals(data.hospitals || []));
 
     fetchPatients(search, isPlatformSuperAdmin ? true : isGlobalMode, selectedHospitalFilter);
-  }, [isGlobalMode, selectedHospitalFilter]);
+
+    // Real-time automatic polling every 5 seconds
+    const pollInterval = setInterval(() => {
+      fetchPatients(search, isPlatformSuperAdmin ? true : isGlobalMode, selectedHospitalFilter);
+    }, 5000);
+
+    // SSE EventSource for immediate real-time updates when a new patient registers
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/events');
+      eventSource.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.event === 'PATIENT_REGISTERED' || parsed.event === 'PATIENT_REGISTER_GLOBAL') {
+            fetchPatients(search, isPlatformSuperAdmin ? true : isGlobalMode, selectedHospitalFilter);
+          }
+        } catch (e) {
+          // silent parse catch
+        }
+      };
+    } catch (sseErr) {
+      console.warn('SSE EventSource subscription error:', sseErr);
+    }
+
+    const handleFocus = () => {
+      fetchPatients(search, isPlatformSuperAdmin ? true : isGlobalMode, selectedHospitalFilter);
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(pollInterval);
+      if (eventSource) eventSource.close();
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isGlobalMode, selectedHospitalFilter, isPlatformSuperAdmin]);
 
   const handleRegisterPatient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,9 +136,13 @@ export default function PatientsManagementPage() {
         ...formData,
         hospitalId: formData.hospitalId || user?.hospitalId || ''
       };
+      const jwt = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
       const res = await fetch('/api/patients', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
+        },
         body: JSON.stringify(payload)
       });
       const data = await res.json();

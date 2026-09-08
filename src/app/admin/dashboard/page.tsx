@@ -59,6 +59,34 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     fetchAnalytics(period);
+
+    // Auto-refresh analytics every 5 seconds for real-time patient count & operational updates
+    const pollInterval = setInterval(() => {
+      fetchAnalytics(period);
+    }, 5000);
+
+    // SSE EventSource listener for instant real-time updates when patients register
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/events');
+      eventSource.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed.event === 'PATIENT_REGISTERED' || parsed.event === 'BROADCAST_NOTIFICATION') {
+            fetchAnalytics(period);
+          }
+        } catch (e) {
+          // silent parse catch
+        }
+      };
+    } catch (sseErr) {
+      console.warn('SSE subscription error in dashboard:', sseErr);
+    }
+
+    return () => {
+      clearInterval(pollInterval);
+      if (eventSource) eventSource.close();
+    };
   }, [period]);
 
   const cards = data?.summaryCards || {

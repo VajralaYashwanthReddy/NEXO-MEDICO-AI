@@ -9,16 +9,28 @@ export default function DoctorPatientsPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const fetchPatients = (q = '') => {
-    fetch(`/api/patients?q=${encodeURIComponent(q)}`)
+  const fetchPatients = (q = search) => {
+    const jwt = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
+    fetch(`/api/patients?q=${encodeURIComponent(q)}`, {
+      headers: jwt ? { Authorization: `Bearer ${jwt}` } : {}
+    })
       .then(res => res.json())
-      .then(data => setPatients(data.patients || []))
+      .then(data => {
+        if (data.patients) setPatients(data.patients);
+      })
+      .catch(err => console.error(err))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    fetchPatients();
-  }, []);
+    fetchPatients(search);
+
+    const interval = setInterval(() => {
+      fetchPatients(search);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [search]);
 
   return (
     <div className="space-y-6">

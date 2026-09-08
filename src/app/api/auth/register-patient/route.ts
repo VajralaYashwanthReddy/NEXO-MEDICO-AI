@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, signJwtToken } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
+import { eventBroadcaster } from '@/lib/events';
 
 export async function POST(req: NextRequest) {
   let body: any = {};
@@ -95,6 +96,17 @@ export async function POST(req: NextRequest) {
         conditions: conditions || null
       }
     });
+
+    try {
+      eventBroadcaster.broadcast('PATIENT_REGISTERED', {
+        patient,
+        patientCode: patient.patientCode,
+        fullName: patient.fullName,
+        hospitalId: defaultHospital.id
+      });
+    } catch (bcErr) {
+      console.warn('Broadcasting PATIENT_REGISTERED skipped:', bcErr);
+    }
 
     try {
       await createAuditLog({
