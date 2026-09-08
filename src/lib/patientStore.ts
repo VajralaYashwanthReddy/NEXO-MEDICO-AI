@@ -82,22 +82,27 @@ const defaultPatients: GlobalPatient[] = [
 
 const TEMP_PATIENT_FILE = path.join(os.tmpdir(), 'nexo_patients_cache.json');
 
+// Persistent in-process Map to retain every patient created across requests
+const allTimePatientsMap = new Map<string, GlobalPatient>();
+defaultPatients.forEach(p => allTimePatientsMap.set(p.patientCode || p.id, p));
+
 function loadTempCache(): GlobalPatient[] {
   try {
     if (fs.existsSync(TEMP_PATIENT_FILE)) {
       const data = fs.readFileSync(TEMP_PATIENT_FILE, 'utf8');
       const parsed = JSON.parse(data);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const mergedMap = new Map();
-        defaultPatients.forEach(p => mergedMap.set(p.patientCode, p));
-        parsed.forEach(p => mergedMap.set(p.patientCode || p.id, p));
-        return Array.from(mergedMap.values());
+        parsed.forEach(p => {
+          if (p && (p.patientCode || p.id)) {
+            allTimePatientsMap.set(p.patientCode || p.id, p);
+          }
+        });
       }
     }
   } catch (e) {
     // silent catch
   }
-  return defaultPatients;
+  return Array.from(allTimePatientsMap.values());
 }
 
 function saveTempCache(patients: GlobalPatient[]) {
@@ -108,16 +113,13 @@ function saveTempCache(patients: GlobalPatient[]) {
   }
 }
 
-let inMemoryPatients: GlobalPatient[] = loadTempCache();
-
 export function getGlobalPatients(): GlobalPatient[] {
-  inMemoryPatients = loadTempCache();
-  return inMemoryPatients;
+  return loadTempCache();
 }
 
 export function addGlobalPatient(newPatient: Partial<GlobalPatient>): GlobalPatient {
-  inMemoryPatients = loadTempCache();
-  const count = inMemoryPatients.length + 10;
+  const current = loadTempCache();
+  const count = current.length + 10;
   const patientCode = newPatient.patientCode || `NEXO-PAT-${String(count).padStart(6, '0')}`;
 
   const created: GlobalPatient = {
@@ -140,22 +142,25 @@ export function addGlobalPatient(newPatient: Partial<GlobalPatient>): GlobalPati
     user: newPatient.user || { id: `usr-${Date.now()}`, email: newPatient.email || '', status: 'ACTIVE' }
   };
 
-  // Avoid duplicate ID
-  inMemoryPatients = [created, ...inMemoryPatients.filter(p => p.patientCode !== patientCode && p.id !== created.id)];
-  saveTempCache(inMemoryPatients);
+  allTimePatientsMap.set(created.patientCode, created);
+  allTimePatientsMap.set(created.id, created);
+  
+  const updatedList = Array.from(allTimePatientsMap.values());
+  saveTempCache(updatedList);
   return created;
 }
 
 export function togglePatientStatusInMemory(patientId: string, newStatus: string): boolean {
-  inMemoryPatients = loadTempCache();
-  const target = inMemoryPatients.find(p => p.id === patientId || p.patientCode === patientId);
+  const current = loadTempCache();
+  const target = current.find(p => p.id === patientId || p.patientCode === patientId);
   if (target) {
     if (!target.user) {
       target.user = { id: `usr-${Date.now()}`, email: target.email, status: newStatus };
     } else {
       target.user.status = newStatus;
     }
-    saveTempCache(inMemoryPatients);
+    allTimePatientsMap.set(target.patientCode || target.id, target);
+    saveTempCache(Array.from(allTimePatientsMap.values()));
     return true;
   }
   return false;

@@ -27,8 +27,15 @@ export default function GlobalUserManagementPage() {
     fetch(`/api/admin/users?role=${selectedRole}&hospitalId=${selectedHospital}&status=${selectedStatus}&q=${encodeURIComponent(search)}`)
       .then(res => res.json())
       .then(data => {
-        setUsers(data.users || []);
-        setHospitals(data.hospitals || []);
+        if (data.users && Array.isArray(data.users)) {
+          setUsers(prev => {
+            const mergedMap = new Map();
+            prev.forEach((u: any) => mergedMap.set(u.email || u.id, u));
+            data.users.forEach((u: any) => mergedMap.set(u.email || u.id, u));
+            return Array.from(mergedMap.values());
+          });
+        }
+        if (data.hospitals) setHospitals(data.hospitals);
       })
       .finally(() => setLoading(false));
   };

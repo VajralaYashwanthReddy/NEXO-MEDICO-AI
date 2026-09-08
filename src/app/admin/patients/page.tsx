@@ -79,21 +79,26 @@ export default function PatientsManagementPage() {
     })
       .then(res => res.json())
       .then(data => {
-        if (data.patients) {
-          const localSaved = typeof window !== 'undefined'
-            ? JSON.parse(localStorage.getItem('nexo_custom_registered_patients') || '[]')
-            : [];
-          
-          const mergedMap = new Map();
-          // Server returned patients first
-          data.patients.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
-          // Locally saved patients from registration
-          localSaved.forEach((p: any) => {
-            if (!mergedMap.has(p.patientCode) && !mergedMap.has(p.id)) {
-              mergedMap.set(p.patientCode || p.id, p);
+        if (data.patients && Array.isArray(data.patients)) {
+          setPatients(prev => {
+            const localSaved = typeof window !== 'undefined'
+              ? JSON.parse(localStorage.getItem('nexo_custom_registered_patients') || '[]')
+              : [];
+            
+            const mergedMap = new Map();
+            // 1. Keep previously seen patients in state so records never drop/flicker
+            prev.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
+            // 2. Incoming server patients
+            data.patients.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
+            // 3. Persistent local storage patients
+            localSaved.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
+
+            const mergedList = Array.from(mergedMap.values());
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('nexo_custom_registered_patients', JSON.stringify(mergedList));
             }
+            return mergedList;
           });
-          setPatients(Array.from(mergedMap.values()));
         }
       })
       .catch(err => console.error('Fetch patients error:', err))

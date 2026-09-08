@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getUserFromRequest, hashPassword } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
 import { getGlobalHospitals } from '@/lib/hospitalStore';
+import { getGlobalPatients } from '@/lib/patientStore';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -57,6 +58,22 @@ export async function GET(req: NextRequest) {
   const mergedUsersMap = new Map<string, any>();
   for (const u of sampleUsers) mergedUsersMap.set(u.email, u);
   for (const u of users) mergedUsersMap.set(u.email, u);
+
+  // Convert global patients from patientStore into user accounts list
+  const globalPatients = getGlobalPatients();
+  for (const p of globalPatients) {
+    if (!mergedUsersMap.has(p.email)) {
+      mergedUsersMap.set(p.email, {
+        id: p.userId || p.id,
+        email: p.email,
+        name: `${p.fullName} (Patient)`,
+        role: 'PATIENT',
+        hospitalId: p.hospitalId,
+        status: p.user?.status || 'ACTIVE',
+        hospital: p.hospital || { id: p.hospitalId, name: 'Metropolitan General Hospital', registrationNo: 'METRO-HOSP-001' }
+      });
+    }
+  }
 
   let finalUsers = Array.from(mergedUsersMap.values());
 
