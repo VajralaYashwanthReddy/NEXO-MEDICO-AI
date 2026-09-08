@@ -4,7 +4,11 @@ import React, { useState } from 'react';
 import { Bell, Send, ShieldAlert, Sparkles, CheckCircle2, Users, Radio, Info, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
-export function BroadcastNotificationManager() {
+interface BroadcastNotificationManagerProps {
+  onNotificationDispatched?: () => void;
+}
+
+export function BroadcastNotificationManager({ onNotificationDispatched }: BroadcastNotificationManagerProps = {}) {
   const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
@@ -51,6 +55,9 @@ export function BroadcastNotificationManager() {
       setSuccessMsg(`🚀 Notification Dispatched Successfully to ${targetRole === 'ALL' ? 'ALL Accounts' : targetRole.replace('_', ' ')}!`);
       setTitle('');
       setMessage('');
+      if (onNotificationDispatched) {
+        onNotificationDispatched();
+      }
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
       setErrorMsg(err.message);

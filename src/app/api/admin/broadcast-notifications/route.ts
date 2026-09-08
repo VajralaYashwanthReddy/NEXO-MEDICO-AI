@@ -35,13 +35,23 @@ let broadcastNotificationsStore: BroadcastNotification[] = [
 ];
 
 export async function GET(req: NextRequest) {
-  const role = req.nextUrl.searchParams.get('role') || 'ALL';
+  const roleParam = req.nextUrl.searchParams.get('role');
   const hospitalId = req.nextUrl.searchParams.get('hospitalId');
 
-  // Filter notifications relevant to target role & hospital
+  // If no role parameter provided (e.g. History log on Notification Dispatcher page), return all dispatched notifications
+  if (!roleParam) {
+    return NextResponse.json({
+      success: true,
+      notifications: broadcastNotificationsStore
+    });
+  }
+
+  const role = roleParam.toUpperCase();
+
+  // Filter notifications relevant to target role & hospital (SUPER_ADMIN sees all)
   const filtered = broadcastNotificationsStore.filter(n => {
-    const roleMatches = n.targetRole === 'ALL' || n.targetRole === role;
-    const hospitalMatches = !n.hospitalId || !hospitalId || n.hospitalId === hospitalId;
+    const roleMatches = n.targetRole === 'ALL' || n.targetRole === role || role === 'SUPER_ADMIN';
+    const hospitalMatches = !n.hospitalId || !hospitalId || n.hospitalId === hospitalId || role === 'SUPER_ADMIN';
     return roleMatches && hospitalMatches;
   });
 

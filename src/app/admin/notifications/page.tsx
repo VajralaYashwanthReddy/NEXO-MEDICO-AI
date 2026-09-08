@@ -54,7 +54,7 @@ export default function NotificationsPage() {
       </div>
 
       {/* 1. Main Broadcast Dispatcher Tool */}
-      <BroadcastNotificationManager />
+      <BroadcastNotificationManager onNotificationDispatched={fetchHistory} />
 
       {/* 2. Sent Broadcast Notifications History List */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">

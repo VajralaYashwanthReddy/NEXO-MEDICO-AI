@@ -127,7 +127,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (data.event === 'BROADCAST_NOTIFICATION' && data.payload) {
             const n = data.payload;
-            if ((n.targetRole === 'ALL' || n.targetRole === user.role) && !clearedSet.has(n.id)) {
+            const isTargetRole = n.targetRole === 'ALL' || n.targetRole === user.role || user.role === 'SUPER_ADMIN';
+            const isTargetHospital = !n.hospitalId || !user.hospitalId || n.hospitalId === user.hospitalId || user.role === 'SUPER_ADMIN';
+
+            if (isTargetRole && isTargetHospital && !clearedSet.has(n.id)) {
               setNotifications(prev => [
                 {
                   id: n.id || Math.random().toString(),
@@ -135,7 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   message: `[${n.severity || 'INFO'}] ${n.message} (From: ${n.senderName || 'Platform Admin'})`,
                   timestamp: n.timestamp || new Date().toISOString()
                 },
-                ...prev.slice(0, 29)
+                ...prev.filter(item => item.id !== n.id).slice(0, 29)
               ]);
             }
           } else if (data.event !== 'CONNECTED') {
