@@ -31,6 +31,7 @@ import {
   Headphones,
   LifeBuoy,
   Cpu,
+  Radio,
   X
 } from 'lucide-react';
 
@@ -60,6 +61,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({ isOpenMobi
         { label: 'Registered Hospitals', href: '/admin/hospitals', icon: Building2 },
         { label: 'Universal Patient Registry', href: '/admin/patients', icon: UserCheck },
         { label: 'Global User Accounts', href: '/admin/users', icon: Users },
+        { label: 'Notification Dispatcher', href: '/admin/notifications', icon: Radio },
         { label: 'Support & Issue Tickets', href: '/admin/support-issues', icon: Headphones },
       ]
     },
@@ -83,6 +85,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({ isOpenMobi
       items: [
         { label: 'Hospital Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
         { label: 'Hospital Profile & Settings', href: '/admin/hospitals', icon: Building2 },
+        { label: 'Notification Dispatcher', href: '/admin/notifications', icon: Radio },
         { label: 'Departments', href: '/admin/departments', icon: Layers },
       ]
     },

@@ -35,7 +35,6 @@ import {
   Bar,
   Legend
 } from 'recharts';
-import { BroadcastNotificationManager } from '@/components/BroadcastNotificationManager';
 
 export default function AdminDashboardPage() {
   const { user } = useAuth();
@@ -157,9 +156,6 @@ export default function AdminDashboardPage() {
           </button>
         </div>
       </div>
-
-      {/* Platform Real-Time Broadcast Notification Dispatcher */}
-      <BroadcastNotificationManager />
 
       {/* KPI CARDS GRID */}
       {isPlatformSuperAdmin ? (
