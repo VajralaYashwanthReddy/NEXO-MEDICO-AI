@@ -95,37 +95,55 @@ function PrescriptionFormContent() {
     }
 
     // 2. Fetch Pharmacy Medicines Inventory Stock
-    fetch('/api/pharmacy/medicines')
-      .then(res => res.json())
-      .then(data => {
-        const meds = (data.medicines || []).map((m: any) => {
-          const totalQty = (m.inventoryItems || []).reduce((acc: number, inv: any) => acc + inv.quantity, 0);
-          return {
-            id: m.id,
-            code: m.code,
-            name: m.name,
-            genericName: m.genericName,
-            category: m.category,
-            totalQty,
-            status: totalQty === 0 ? 'OUT_OF_STOCK' : totalQty <= 15 ? 'LOW_STOCK' : 'IN_STOCK'
-          };
-        });
-        setPharmacyStock(meds);
-
-        // Pre-select first medicine if available
-        if (meds.length > 0) {
-          setMedicines(prev => [
-            {
-              ...prev[0],
-              medicineId: meds[0].id,
-              name: meds[0].name,
-              stockQty: meds[0].totalQty
-            }
-          ]);
+    const fetchPharmacyStock = () => {
+      const jwt = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
+      fetch('/api/pharmacy/medicines', {
+        headers: {
+          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
         }
       })
-      .catch(err => console.error(err))
-      .finally(() => setLoadingStock(false));
+        .then(res => res.json())
+        .then(data => {
+          const meds = (data.medicines || []).map((m: any) => {
+            const totalQty = (m.inventoryItems || []).reduce((acc: number, inv: any) => acc + inv.quantity, 0);
+            const unitPrice = m.inventoryItems?.[0]?.unitPrice || 50;
+            return {
+              id: m.id,
+              code: m.code,
+              name: m.name,
+              genericName: m.genericName,
+              category: m.category,
+              totalQty,
+              unitPrice,
+              status: totalQty === 0 ? 'OUT_OF_STOCK' : totalQty <= 15 ? 'LOW_STOCK' : 'IN_STOCK'
+            };
+          });
+          setPharmacyStock(meds);
+
+          // Pre-select first medicine if available and none selected yet
+          if (meds.length > 0) {
+            setMedicines(prev => {
+              if (prev.length > 0 && !prev[0].medicineId) {
+                return [
+                  {
+                    ...prev[0],
+                    medicineId: meds[0].id,
+                    name: meds[0].name,
+                    stockQty: meds[0].totalQty
+                  },
+                  ...prev.slice(1)
+                ];
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(err => console.error(err))
+        .finally(() => setLoadingStock(false));
+    };
+
+    fetchPharmacyStock();
+    const stockInterval = setInterval(fetchPharmacyStock, 4000);
 
     // 3. Fetch Lab Test Catalog
     fetch('/api/laboratory/orders')
@@ -138,6 +156,8 @@ function PrescriptionFormContent() {
       })
       .catch(err => console.error(err))
       .finally(() => setLoadingLabTests(false));
+
+    return () => clearInterval(stockInterval);
   }, [preselectedPatientId]);
 
   // Global Patient Search Handler

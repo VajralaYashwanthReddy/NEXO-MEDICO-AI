@@ -12,26 +12,36 @@ export default function PharmacyInventoryPage() {
   const [restockModalItem, setRestockModalItem] = useState<any>(null);
   const [addedQuantity, setAddedQuantity] = useState('50');
   const [submittingRestock, setSubmittingRestock] = useState(false);
+  const [submittingAdd, setSubmittingAdd] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [addErrorMsg, setAddErrorMsg] = useState('');
 
   // Add new medicine form
   const [formData, setFormData] = useState({
-    code: '',
-    name: '',
-    genericName: '',
+    code: 'MED-0001',
+    name: 'Paracetamol',
+    genericName: 'Acetaminophen',
     category: 'Analgesic',
     manufacturer: 'PharmaCorp',
     batchNo: 'BATCH-1001',
     expiryDate: '2027-12-31',
     quantity: '100',
-    unitPrice: '1.50',
+    unitPrice: '50',
     reorderLevel: '15'
   });
 
+  const getJwt = () => (typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null);
+
   const fetchMedicines = () => {
-    fetch('/api/pharmacy/medicines')
+    const jwt = getJwt();
+    fetch('/api/pharmacy/medicines', {
+      headers: {
+        ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
+      }
+    })
       .then(res => res.json())
       .then(data => setMedicines(data.medicines || []))
+      .catch(err => console.error('Fetch medicines error:', err))
       .finally(() => setLoading(false));
   };
 
@@ -42,20 +52,47 @@ export default function PharmacyInventoryPage() {
   // Add new drug stock
   const handleAddStock = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAddErrorMsg('');
+    setSubmittingAdd(true);
+
     try {
+      const jwt = getJwt();
       const res = await fetch('/api/pharmacy/medicines', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
+        },
         body: JSON.stringify(formData)
       });
+
+      const data = await res.json();
       if (res.ok) {
         setShowAddModal(false);
-        setSuccessMessage('New drug stock added successfully!');
-        setTimeout(() => setSuccessMessage(''), 4000);
+        setSuccessMessage(data.message || 'New drug stock added successfully! Available for all hospital doctors.');
+        setTimeout(() => setSuccessMessage(''), 5000);
+        // Reset form defaults for next add
+        setFormData({
+          code: `MED-${Math.floor(1000 + Math.random() * 9000)}`,
+          name: '',
+          genericName: '',
+          category: 'Analgesic',
+          manufacturer: 'PharmaCorp',
+          batchNo: `BATCH-${Math.floor(1000 + Math.random() * 9000)}`,
+          expiryDate: '2027-12-31',
+          quantity: '100',
+          unitPrice: '50',
+          reorderLevel: '15'
+        });
         fetchMedicines();
+      } else {
+        setAddErrorMsg(data.error || 'Failed to save stock. Please check inputs and try again.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setAddErrorMsg(err.message || 'Network error occurred while saving stock');
+    } finally {
+      setSubmittingAdd(false);
     }
   };
 
@@ -66,9 +103,13 @@ export default function PharmacyInventoryPage() {
 
     setSubmittingRestock(true);
     try {
+      const jwt = getJwt();
       const res = await fetch('/api/pharmacy/medicines', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
+        },
         body: JSON.stringify({
           inventoryId: restockModalItem.id,
           addedQuantity: parseInt(addedQuantity)
@@ -79,7 +120,7 @@ export default function PharmacyInventoryPage() {
       if (res.ok) {
         setRestockModalItem(null);
         setSuccessMessage(data.message || 'Stock increased successfully!');
-        setTimeout(() => setSuccessMessage(''), 4000);
+        setTimeout(() => setSuccessMessage(''), 5000);
         fetchMedicines();
       } else {
         alert(data.error || 'Restock failed');
@@ -100,19 +141,22 @@ export default function PharmacyInventoryPage() {
             <Pill className="w-6 h-6 text-emerald-600" /> Pharmacy Medicine Inventory & Batch Tracking
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Monitor drug stock quantities, expiry dates, batch numbers, and reorder levels
+            Monitor drug stock quantities, expiry dates, batch numbers, and reorder levels (Prices in ₹ INR)
           </p>
         </div>
         <button
-          onClick={() => setShowAddModal(true)}
-          className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all"
+          onClick={() => {
+            setAddErrorMsg('');
+            setShowAddModal(true);
+          }}
+          className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
         >
           <Plus className="w-4 h-4" /> Add New Drug Stock
         </button>
       </div>
 
       {successMessage && (
-        <div className="p-3.5 bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
+        <div className="p-3.5 bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> {successMessage}
         </div>
       )}
@@ -128,7 +172,7 @@ export default function PharmacyInventoryPage() {
                 <th className="p-4">Generic Name</th>
                 <th className="p-4">Category</th>
                 <th className="p-4">Stock Batches & Quantities</th>
-                <th className="p-4">Unit Price</th>
+                <th className="p-4">Unit Price (₹)</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -158,7 +202,7 @@ export default function PharmacyInventoryPage() {
                               ? 'bg-rose-100 text-rose-800 animate-pulse'
                               : 'bg-amber-100 text-amber-800'
                           }`}>
-                            {inv.status.replace('_', ' ')}
+                            {inv.status ? inv.status.replace('_', ' ') : 'IN STOCK'}
                           </span>
                         </div>
 
@@ -168,14 +212,14 @@ export default function PharmacyInventoryPage() {
                             setRestockModalItem({ ...inv, medicineName: med.name });
                             setAddedQuantity('50');
                           }}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] rounded-lg shadow-sm flex items-center gap-1 transition-all shrink-0"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] rounded-lg shadow-sm flex items-center gap-1 transition-all shrink-0 cursor-pointer"
                         >
                           <TrendingUp className="w-3 h-3" /> + Increase Stock
                         </button>
                       </div>
                     ))}
                   </td>
-                  <td className="p-4 font-bold text-slate-800">${med.inventoryItems?.[0]?.unitPrice || '1.00'}</td>
+                  <td className="p-4 font-bold text-slate-800">₹{med.inventoryItems?.[0]?.unitPrice || '50'}</td>
                   <td className="p-4 text-right">
                     <button
                       onClick={() => {
@@ -184,7 +228,7 @@ export default function PharmacyInventoryPage() {
                           setAddedQuantity('50');
                         }
                       }}
-                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] rounded-lg border border-emerald-200 inline-flex items-center gap-1 transition-all"
+                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] rounded-lg border border-emerald-200 inline-flex items-center gap-1 transition-all cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" /> Restock
                     </button>
@@ -253,7 +297,7 @@ export default function PharmacyInventoryPage() {
                 <button
                   type="submit"
                   disabled={submittingRestock}
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow flex items-center gap-1.5"
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow flex items-center gap-1.5 cursor-pointer"
                 >
                   <TrendingUp className="w-4 h-4" /> {submittingRestock ? 'Updating Inventory...' : 'Confirm Restock & Increase'}
                 </button>
@@ -273,41 +317,100 @@ export default function PharmacyInventoryPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {addErrorMsg && (
+              <div className="p-2.5 bg-rose-100 border border-rose-300 text-rose-800 font-bold rounded-xl text-xs flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" /> {addErrorMsg}
+              </div>
+            )}
+
             <form onSubmit={handleAddStock} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold text-slate-700">Drug Code *</label>
-                  <input type="text" required value={formData.code} onChange={(e) => setFormData({ ...formData, code: e.target.value })} placeholder="MED-PAR-500" className="w-full mt-1 px-3 py-2 border rounded-lg" />
+                  <input
+                    type="text"
+                    required
+                    value={formData.code}
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                    placeholder="MED-0001"
+                    className="w-full mt-1 px-3 py-2 border rounded-lg uppercase"
+                  />
                 </div>
                 <div>
                   <label className="font-semibold text-slate-700">Brand Name *</label>
-                  <input type="text" required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Paracetamol" className="w-full mt-1 px-3 py-2 border rounded-lg" />
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Paracetamol"
+                    className="w-full mt-1 px-3 py-2 border rounded-lg"
+                  />
                 </div>
               </div>
 
               <div>
                 <label className="font-semibold text-slate-700">Generic Name *</label>
-                <input type="text" required value={formData.genericName} onChange={(e) => setFormData({ ...formData, genericName: e.target.value })} placeholder="Acetaminophen" className="w-full mt-1 px-3 py-2 border rounded-lg" />
+                <input
+                  type="text"
+                  required
+                  value={formData.genericName}
+                  onChange={(e) => setFormData({ ...formData, genericName: e.target.value })}
+                  placeholder="Acetaminophen"
+                  className="w-full mt-1 px-3 py-2 border rounded-lg"
+                />
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="font-semibold text-slate-700">Quantity *</label>
-                  <input type="number" required value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} className="w-full mt-1 px-3 py-2 border rounded-lg" />
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={formData.quantity}
+                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                    className="w-full mt-1 px-3 py-2 border rounded-lg"
+                  />
                 </div>
                 <div>
                   <label className="font-semibold text-slate-700">Batch No</label>
-                  <input type="text" value={formData.batchNo} onChange={(e) => setFormData({ ...formData, batchNo: e.target.value })} className="w-full mt-1 px-3 py-2 border rounded-lg" />
+                  <input
+                    type="text"
+                    value={formData.batchNo}
+                    onChange={(e) => setFormData({ ...formData, batchNo: e.target.value })}
+                    className="w-full mt-1 px-3 py-2 border rounded-lg"
+                  />
                 </div>
                 <div>
-                  <label className="font-semibold text-slate-700">Unit Price ($)</label>
-                  <input type="number" step="0.1" value={formData.unitPrice} onChange={(e) => setFormData({ ...formData, unitPrice: e.target.value })} className="w-full mt-1 px-3 py-2 border rounded-lg" />
+                  <label className="font-semibold text-slate-700">Unit Price (₹)</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    value={formData.unitPrice}
+                    onChange={(e) => setFormData({ ...formData, unitPrice: e.target.value })}
+                    className="w-full mt-1 px-3 py-2 border rounded-lg"
+                  />
                 </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t">
-                <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 text-slate-500 font-bold">Cancel</button>
-                <button type="submit" className="px-5 py-2 bg-emerald-600 text-white font-bold rounded-lg shadow">Save Stock</button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 text-slate-500 font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingAdd}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg shadow flex items-center gap-1.5 cursor-pointer"
+                >
+                  {submittingAdd ? 'Saving Stock...' : 'Save Stock'}
+                </button>
               </div>
             </form>
           </div>

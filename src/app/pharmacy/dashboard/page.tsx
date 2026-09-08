@@ -12,9 +12,12 @@ export default function PharmacistDashboard() {
 
   const fetchData = () => {
     setLoading(true);
+    const jwt = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
+    const headers: Record<string, string> = jwt ? { Authorization: `Bearer ${jwt}` } : {};
+
     Promise.all([
-      fetch('/api/prescriptions?status=ISSUED').then(r => r.json()).catch(() => ({ prescriptions: [] })),
-      fetch('/api/pharmacy/medicines').then(r => r.json()).catch(() => ({ medicines: [], alerts: [] }))
+      fetch('/api/prescriptions?status=ISSUED', { headers }).then(r => r.json()).catch(() => ({ prescriptions: [] })),
+      fetch('/api/pharmacy/medicines', { headers }).then(r => r.json()).catch(() => ({ medicines: [], alerts: [] }))
     ]).then(([rxData, medData]) => {
       setPrescriptions(Array.isArray(rxData?.prescriptions) ? rxData.prescriptions : []);
       setMedicines(Array.isArray(medData?.medicines) ? medData.medicines : []);

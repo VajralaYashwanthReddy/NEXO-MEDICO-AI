@@ -9,7 +9,12 @@ export default function GlobalPharmacyManagementPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/pharmacy/medicines')
+    const jwt = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
+    fetch('/api/pharmacy/medicines', {
+      headers: {
+        ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
+      }
+    })
       .then(res => res.json())
       .then(data => {
         setMedicines(data.medicines || []);
@@ -61,7 +66,7 @@ export default function GlobalPharmacyManagementPage() {
                 <th className="p-4">Generic Name</th>
                 <th className="p-4">Category</th>
                 <th className="p-4">Batch Quantities & Status</th>
-                <th className="p-4">Unit Price</th>
+                <th className="p-4">Unit Price (₹)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -85,12 +90,12 @@ export default function GlobalPharmacyManagementPage() {
                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
                           inv.status === 'IN_STOCK' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                         }`}>
-                          {inv.status}
+                          {inv.status ? inv.status.replace('_', ' ') : 'IN STOCK'}
                         </span>
                       </div>
                     ))}
                   </td>
-                  <td className="p-4 font-bold text-slate-800">${med.inventoryItems?.[0]?.unitPrice || '1.00'}</td>
+                  <td className="p-4 font-bold text-slate-800">₹{med.inventoryItems?.[0]?.unitPrice || '50'}</td>
                 </tr>
               ))}
             </tbody>
