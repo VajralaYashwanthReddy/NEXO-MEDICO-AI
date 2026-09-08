@@ -80,7 +80,20 @@ export default function PatientsManagementPage() {
       .then(res => res.json())
       .then(data => {
         if (data.patients) {
-          setPatients(data.patients);
+          const localSaved = typeof window !== 'undefined'
+            ? JSON.parse(localStorage.getItem('nexo_custom_registered_patients') || '[]')
+            : [];
+          
+          const mergedMap = new Map();
+          // Server returned patients first
+          data.patients.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
+          // Locally saved patients from registration
+          localSaved.forEach((p: any) => {
+            if (!mergedMap.has(p.patientCode) && !mergedMap.has(p.id)) {
+              mergedMap.set(p.patientCode || p.id, p);
+            }
+          });
+          setPatients(Array.from(mergedMap.values()));
         }
       })
       .catch(err => console.error('Fetch patients error:', err))
@@ -107,6 +120,15 @@ export default function PatientsManagementPage() {
         try {
           const parsed = JSON.parse(event.data);
           if (parsed.event === 'PATIENT_REGISTERED' || parsed.event === 'PATIENT_REGISTER_GLOBAL') {
+            if (parsed.payload?.patient) {
+              const localSaved = typeof window !== 'undefined'
+                ? JSON.parse(localStorage.getItem('nexo_custom_registered_patients') || '[]')
+                : [];
+              const updated = [parsed.payload.patient, ...localSaved.filter((p: any) => p.patientCode !== parsed.payload.patient.patientCode)];
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('nexo_custom_registered_patients', JSON.stringify(updated));
+              }
+            }
             fetchPatients(search, isPlatformSuperAdmin ? true : isGlobalMode, selectedHospitalFilter);
           }
         } catch (e) {
@@ -149,6 +171,17 @@ export default function PatientsManagementPage() {
       if (res.ok) {
         setShowModal(false);
         setCredentialsModal(data.credentials);
+        
+        if (data.patient) {
+          const localSaved = typeof window !== 'undefined'
+            ? JSON.parse(localStorage.getItem('nexo_custom_registered_patients') || '[]')
+            : [];
+          const updatedLocal = [data.patient, ...localSaved.filter((p: any) => p.patientCode !== data.patient.patientCode)];
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('nexo_custom_registered_patients', JSON.stringify(updatedLocal));
+          }
+        }
+
         setFormData({
           fullName: '',
           dob: '1985-04-12',

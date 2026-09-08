@@ -70,6 +70,14 @@ export default function PatientSelfRegistrationPage() {
 
       if (!res.ok) throw new Error(data.error || 'Registration failed');
 
+      if (data.patient && typeof window !== 'undefined') {
+        try {
+          const localSaved = JSON.parse(localStorage.getItem('nexo_custom_registered_patients') || '[]');
+          const updated = [data.patient, ...localSaved.filter((p: any) => p.patientCode !== data.patient.patientCode)];
+          localStorage.setItem('nexo_custom_registered_patients', JSON.stringify(updated));
+        } catch (e) {}
+      }
+
       login(data.token, {
         id: data.user.id,
         email: data.user.email,

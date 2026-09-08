@@ -1,3 +1,7 @@
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
 export interface GlobalPatient {
   id: string;
   patientCode: string;
@@ -19,7 +23,7 @@ export interface GlobalPatient {
   user?: { id: string; email: string; status: string };
 }
 
-let inMemoryPatients: GlobalPatient[] = [
+const defaultPatients: GlobalPatient[] = [
   {
     id: 'pat-000001',
     patientCode: 'NEXO-PAT-000001',
@@ -76,11 +80,43 @@ let inMemoryPatients: GlobalPatient[] = [
   }
 ];
 
+const TEMP_PATIENT_FILE = path.join(os.tmpdir(), 'nexo_patients_cache.json');
+
+function loadTempCache(): GlobalPatient[] {
+  try {
+    if (fs.existsSync(TEMP_PATIENT_FILE)) {
+      const data = fs.readFileSync(TEMP_PATIENT_FILE, 'utf8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const mergedMap = new Map();
+        defaultPatients.forEach(p => mergedMap.set(p.patientCode, p));
+        parsed.forEach(p => mergedMap.set(p.patientCode || p.id, p));
+        return Array.from(mergedMap.values());
+      }
+    }
+  } catch (e) {
+    // silent catch
+  }
+  return defaultPatients;
+}
+
+function saveTempCache(patients: GlobalPatient[]) {
+  try {
+    fs.writeFileSync(TEMP_PATIENT_FILE, JSON.stringify(patients, null, 2), 'utf8');
+  } catch (e) {
+    // silent catch
+  }
+}
+
+let inMemoryPatients: GlobalPatient[] = loadTempCache();
+
 export function getGlobalPatients(): GlobalPatient[] {
+  inMemoryPatients = loadTempCache();
   return inMemoryPatients;
 }
 
 export function addGlobalPatient(newPatient: Partial<GlobalPatient>): GlobalPatient {
+  inMemoryPatients = loadTempCache();
   const count = inMemoryPatients.length + 10;
   const patientCode = newPatient.patientCode || `NEXO-PAT-${String(count).padStart(6, '0')}`;
 
@@ -106,10 +142,12 @@ export function addGlobalPatient(newPatient: Partial<GlobalPatient>): GlobalPati
 
   // Avoid duplicate ID
   inMemoryPatients = [created, ...inMemoryPatients.filter(p => p.patientCode !== patientCode && p.id !== created.id)];
+  saveTempCache(inMemoryPatients);
   return created;
 }
 
 export function togglePatientStatusInMemory(patientId: string, newStatus: string): boolean {
+  inMemoryPatients = loadTempCache();
   const target = inMemoryPatients.find(p => p.id === patientId || p.patientCode === patientId);
   if (target) {
     if (!target.user) {
@@ -117,6 +155,7 @@ export function togglePatientStatusInMemory(patientId: string, newStatus: string
     } else {
       target.user.status = newStatus;
     }
+    saveTempCache(inMemoryPatients);
     return true;
   }
   return false;
