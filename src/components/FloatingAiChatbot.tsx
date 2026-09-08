@@ -591,35 +591,37 @@ Our platform super admin team has received your ticket and will process it live 
       )}
 
       {/* ----------------- SMALL FLOATING ROBOT AI BOT BUTTON ----------------- */}
-      <div
-        style={position ? { left: `${position.x}px`, top: `${position.y}px`, bottom: 'auto', right: 'auto' } : {}}
-        className="fixed bottom-6 right-6 z-50 flex items-center bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-full shadow-2xl ring-4 ring-purple-400/30 select-none"
-      >
-        {/* Drag handle grip */}
+      {!isOpen && (
         <div
-          onMouseDown={handleDragStart}
-          onTouchStart={handleDragStart}
-          className="pl-2.5 py-3.5 cursor-grab active:cursor-grabbing text-purple-200 hover:text-white flex items-center justify-center"
-          title="Click & Drag to reposition AI Bot anywhere"
+          style={position ? { left: `${position.x}px`, top: `${position.y}px`, bottom: 'auto', right: 'auto' } : {}}
+          className="fixed bottom-6 right-6 z-50 flex items-center bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-full shadow-2xl ring-4 ring-purple-400/30 select-none animate-in fade-in"
         >
-          <GripVertical className="w-4 h-4" />
-        </div>
-
-        {/* Toggle Chatbot Button */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="py-3.5 pr-4 pl-1 text-white flex items-center justify-center gap-2 group transition-all cursor-pointer"
-          title="Click to Open/Close Nexo AI Platform & Support Bot"
-        >
-          <div className="relative">
-            <Bot className="w-5 h-5 text-white group-hover:rotate-12 transition-transform" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-900 animate-pulse" />
+          {/* Drag handle grip */}
+          <div
+            onMouseDown={handleDragStart}
+            onTouchStart={handleDragStart}
+            className="pl-2.5 py-3.5 cursor-grab active:cursor-grabbing text-purple-200 hover:text-white flex items-center justify-center"
+            title="Click & Drag to reposition AI Bot anywhere"
+          >
+            <GripVertical className="w-4 h-4" />
           </div>
-          <span className="text-xs font-black tracking-tight hidden sm:inline">
-            Nexo AI Bot
-          </span>
-        </button>
-      </div>
+
+          {/* Toggle Chatbot Button */}
+          <button
+            onClick={() => setIsOpen(true)}
+            className="py-3.5 pr-4 pl-1 text-white flex items-center justify-center gap-2 group transition-all cursor-pointer"
+            title="Click to Open Nexo AI Platform & Support Bot"
+          >
+            <div className="relative">
+              <Bot className="w-5 h-5 text-white group-hover:rotate-12 transition-transform" />
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-slate-900 animate-pulse" />
+            </div>
+            <span className="text-xs font-black tracking-tight hidden sm:inline">
+              Nexo AI Bot
+            </span>
+          </button>
+        </div>
+      )}
     </>
   );
 }
