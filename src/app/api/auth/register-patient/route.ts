@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { hashPassword, signJwtToken } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
 import { eventBroadcaster } from '@/lib/events';
+import { addGlobalPatient } from '@/lib/patientStore';
 
 export async function POST(req: NextRequest) {
   let body: any = {};
@@ -188,6 +189,17 @@ export async function POST(req: NextRequest) {
       conditions: conditions || null,
       createdAt: new Date().toISOString()
     };
+
+    addGlobalPatient(mockPatient);
+
+    try {
+      eventBroadcaster.broadcast('PATIENT_REGISTERED', {
+        patient: mockPatient,
+        patientCode: mockPatientCode,
+        fullName,
+        hospitalId: mockHospitalId
+      });
+    } catch (e) {}
 
     const token = signJwtToken({
       id: mockUser.id,
