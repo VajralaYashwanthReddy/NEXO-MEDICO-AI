@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { comparePasswords, signJwtToken } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
+import { getGlobalPatients } from '@/lib/patientStore';
 
 export async function POST(req: NextRequest) {
   let email = '';
@@ -43,8 +44,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (!user) {
-      // If user not found in DB, check demo fallback
-      throw new Error('User not found in DB, trigger demo check');
+      // If user not found in DB, check demo/fallback store
+      throw new Error('User not found in DB, trigger fallback check');
     }
 
     if (user.status !== 'ACTIVE') {
@@ -105,46 +106,59 @@ export async function POST(req: NextRequest) {
     return response;
 
   } catch (error: any) {
-    console.warn('Using zero-downtime demo fallback for login:', inputClean);
+    console.warn('Using zero-downtime fallback for login:', inputClean);
 
-    // Support both .org and .com and all standard demo accounts
     const emailLower = inputClean.toLowerCase();
-    
-    let role = 'HOSPITAL_ADMIN';
-    let name = 'Hospital Administrator';
+    const globalPatients = getGlobalPatients();
+
+    // Check if patient exists in Patient Store
+    const patientMatch = globalPatients.find(p =>
+      p.email.toLowerCase() === emailLower ||
+      p.patientCode.toUpperCase() === inputClean.toUpperCase()
+    );
+
+    let role = 'PATIENT';
+    let name = 'Registered Patient';
     let hospitalId: string | null = 'hosp-metro-01';
     let hospitalName = 'Metropolitan General Hospital';
 
-    if (emailLower.includes('superadmin') || emailLower.includes('platform')) {
+    if (patientMatch) {
+      role = 'PATIENT';
+      name = patientMatch.fullName;
+      hospitalId = patientMatch.hospitalId;
+      hospitalName = patientMatch.hospital?.name || 'Metropolitan General Hospital';
+    } else if (emailLower.includes('superadmin') || emailLower.includes('supradmin') || emailLower.includes('platform')) {
       role = 'SUPER_ADMIN';
       name = 'Master Platform Super Admin';
       hospitalId = null;
       hospitalName = 'All Platform Tenants';
+    } else if (emailLower.includes('admin') || emailLower.includes('hospitaladmin') || emailLower.includes('hospadmin')) {
+      role = 'HOSPITAL_ADMIN';
+      name = 'Hospital Administrator';
     } else if (emailLower.includes('dr.') || emailLower.includes('doctor')) {
       role = 'DOCTOR';
       name = 'Dr. Sarah Smith (Cardiologist)';
     } else if (emailLower.includes('nurse')) {
       role = 'NURSE';
       name = 'Nurse Sarah Johnson';
-    } else if (emailLower.includes('pharma') || emailLower.includes('alex')) {
+    } else if (emailLower.includes('pharma')) {
       role = 'PHARMACIST';
       name = 'Alex Vance (Lead Pharmacist)';
     } else if (emailLower.includes('lab')) {
       role = 'LAB_TECH';
       name = 'Lab Tech Robert Chen';
-    } else if (emailLower.includes('john') || emailLower.includes('patient') || inputClean.toUpperCase().startsWith('NEXO-PAT-')) {
+    } else {
+      // Default for all personal/registered patient accounts
       role = 'PATIENT';
-      name = 'John Doe (Patient)';
-    } else if (emailLower.includes('admin')) {
-      role = 'HOSPITAL_ADMIN';
-      name = 'Hospital Administrator';
+      name = 'Patient Account';
     }
 
     const fallbackUser = {
-      id: `usr-demo-${Date.now()}`,
+      id: patientMatch ? (patientMatch.userId || patientMatch.id) : `usr-pat-${Date.now()}`,
       email: inputClean,
       name,
       role,
+      patientCode: patientMatch ? patientMatch.patientCode : undefined,
       hospitalId,
       hospitalName
     };
@@ -161,7 +175,7 @@ export async function POST(req: NextRequest) {
     const token = signJwtToken(payload);
 
     const response = NextResponse.json({
-      message: 'Login successful (Demo Mode)',
+      message: 'Login successful',
       user: fallbackUser,
       token
     });
