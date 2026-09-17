@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, ShieldCheck, Lock, CheckCircle2, Copy, Sparkles, X } from 'lucide-react';
+import { RefreshCw, ShieldCheck, Lock, CheckCircle2, Copy, Sparkles, X, Volume2 } from 'lucide-react';
 
 // Helper to generate random CAPTCHA string
 export function generateCaptchaCode(length: number = 5): string {
@@ -43,6 +43,18 @@ export function VisualCaptcha({
     setUserInput('');
   };
 
+  const speakCaptcha = () => {
+    if (!captchaCode) return;
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const textToSpeak = `Security code is: ${captchaCode.split('').join(' ')}`;
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      utterance.rate = 0.85;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
   useEffect(() => {
     refreshCaptcha();
   }, []);
@@ -53,25 +65,25 @@ export function VisualCaptcha({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Draw stylized captcha
+    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Background gradient
+    // High-contrast background gradient
     const bgGradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
     if (theme === 'dark') {
-      bgGradient.addColorStop(0, '#0f172a');
+      bgGradient.addColorStop(0, '#090d16');
       bgGradient.addColorStop(1, '#1e293b');
     } else {
-      bgGradient.addColorStop(0, '#f1f5f9');
+      bgGradient.addColorStop(0, '#f8fafc');
       bgGradient.addColorStop(1, '#e2e8f0');
     }
     ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Noise lines
-    for (let i = 0; i < 6; i++) {
-      ctx.strokeStyle = theme === 'dark' ? `rgba(6, 182, 212, ${0.15 + i * 0.05})` : `rgba(14, 165, 233, ${0.2 + i * 0.05})`;
-      ctx.lineWidth = 1.5;
+    // Subtle background grid/noise lines (does not obscure letters)
+    for (let i = 0; i < 4; i++) {
+      ctx.strokeStyle = theme === 'dark' ? `rgba(56, 189, 248, 0.12)` : `rgba(2, 132, 199, 0.15)`;
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.moveTo(Math.random() * canvas.width, Math.random() * canvas.height);
       ctx.bezierCurveTo(
@@ -85,27 +97,37 @@ export function VisualCaptcha({
       ctx.stroke();
     }
 
-    // Noise dots
-    for (let i = 0; i < 30; i++) {
-      ctx.fillStyle = theme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(15, 23, 42, 0.2)';
+    // Subtle ambient dots
+    for (let i = 0; i < 15; i++) {
+      ctx.fillStyle = theme === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(15, 23, 42, 0.15)';
       ctx.beginPath();
       ctx.arc(Math.random() * canvas.width, Math.random() * canvas.height, 1, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Text rendering with character distortion
-    ctx.font = 'bold 22px monospace';
+    // Ultra-vibrant crisp high-contrast character rendering
+    ctx.font = 'bold 24px "Courier New", monospace, sans-serif';
+    ctx.textBaseline = 'middle';
+
     const colors = theme === 'dark' 
-      ? ['#38bdf8', '#818cf8', '#34d399', '#f472b6', '#fbbf24']
-      : ['#0284c7', '#4f46e5', '#059669', '#db2777', '#d97706'];
+      ? ['#38bdf8', '#f43f5e', '#34d399', '#facc15', '#c084fc']
+      : ['#0284c7', '#e11d48', '#059669', '#d97706', '#7e22ce'];
 
     for (let i = 0; i < captchaCode.length; i++) {
       ctx.save();
-      const x = 18 + i * 22;
-      const y = 28 + (Math.random() * 4 - 2);
-      const angle = (Math.random() - 0.5) * 0.4;
+      const x = 20 + i * 29;
+      const y = 23 + (Math.random() * 2 - 1);
+      const angle = (Math.random() - 0.5) * 0.2;
+
       ctx.translate(x, y);
       ctx.rotate(angle);
+
+      // Text drop shadow for maximum legibility
+      ctx.shadowColor = theme === 'dark' ? 'rgba(0, 0, 0, 0.85)' : 'rgba(255, 255, 255, 0.9)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 1;
+
       ctx.fillStyle = colors[i % colors.length];
       ctx.fillText(captchaCode[i], 0, 0);
       ctx.restore();
@@ -115,42 +137,68 @@ export function VisualCaptcha({
   const isDark = theme === 'dark';
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 select-none">
       <div className="flex items-center justify-between text-xs font-semibold">
         <label className={isDark ? 'text-slate-300' : 'text-slate-700'}>
           Security CAPTCHA Verification <span className="text-rose-500">*</span>
         </label>
-        <span className="text-[10px] text-cyan-500 font-mono">Case-sensitive</span>
+        <span className="text-[10px] text-cyan-400 font-mono font-bold">Case-sensitive</span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
         {/* Canvas Display */}
-        <div className={`relative rounded-xl overflow-hidden border ${isDark ? 'border-slate-700 bg-slate-900' : 'border-slate-300 bg-white'} shrink-0 shadow-inner`}>
-          <canvas ref={canvasRef} width={135} height={42} className="block cursor-pointer" onClick={refreshCaptcha} title="Click to reload CAPTCHA" />
+        <div className={`relative rounded-xl overflow-hidden border ${isDark ? 'border-slate-700 bg-slate-900 shadow-md' : 'border-slate-300 bg-white shadow-xs'} shrink-0 flex items-center`}>
+          <canvas
+            ref={canvasRef}
+            width={165}
+            height={44}
+            className="block cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={refreshCaptcha}
+            title="Click CAPTCHA image to reload new code"
+          />
+        </div>
+
+        {/* Action Controls: Reload & Audio Readout */}
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={refreshCaptcha}
-            className={`absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors ${
-              isDark ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+            className={`p-2.5 rounded-xl transition-all border cursor-pointer ${
+              isDark
+                ? 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-cyan-400 hover:text-cyan-300 shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-cyan-700 hover:text-cyan-800'
             }`}
-            title="Reload CAPTCHA"
+            title="Generate New Security Code (Reload)"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className="w-4 h-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={speakCaptcha}
+            className={`p-2.5 rounded-xl transition-all border cursor-pointer ${
+              isDark
+                ? 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-purple-400 hover:text-purple-300 shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-purple-700 hover:text-purple-800'
+            }`}
+            title="Listen to CAPTCHA Code (Audio Readout)"
+          >
+            <Volume2 className="w-4 h-4" />
           </button>
         </div>
 
         {/* Input Field */}
-        <div className="flex-1 relative">
+        <div className="flex-1 min-w-[110px]">
           <input
             type="text"
             required
             maxLength={5}
             value={userInput}
             onChange={(e) => setUserInput(e.target.value.toUpperCase())}
-            placeholder="Enter CAPTCHA"
-            className={`w-full px-3 py-2.5 rounded-xl text-xs font-mono font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-cyan-500 transition-all ${
+            placeholder="ENTER CODE"
+            className={`w-full px-3 py-2.5 rounded-xl text-xs font-mono font-black tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500 transition-all ${
               isDark
-                ? 'bg-slate-950 border border-slate-800 text-white placeholder-slate-500'
+                ? 'bg-slate-950 border border-slate-800 text-white placeholder-slate-500 shadow-inner'
                 : 'bg-white border border-slate-300 text-slate-900 placeholder-slate-400 shadow-xs'
             }`}
           />
