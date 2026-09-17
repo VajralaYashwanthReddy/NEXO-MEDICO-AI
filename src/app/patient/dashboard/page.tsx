@@ -74,17 +74,32 @@ export default function PatientDashboard() {
     fetch('/api/patients?global=true')
       .then(r => r.json())
       .then(d => {
-        if (d.patients && d.patients.length > 0) {
+        if (d.patients && Array.isArray(d.patients)) {
           const userEmailLower = user?.email?.toLowerCase();
           const target = d.patients.find((p: any) =>
             (userEmailLower && p.email?.toLowerCase() === userEmailLower) ||
             (userEmailLower && p.user?.email?.toLowerCase() === userEmailLower) ||
-            (p.userId && p.userId === user?.id)
-          ) || d.patients[0];
-          fetch(`/api/patients/${target.id}/timeline`)
-            .then(r => r.json())
-            .then(t => setPatientTimeline(t.patientTimeline))
-            .catch(() => setPatientTimeline(target));
+            (p.userId && p.userId === user?.id) ||
+            (user?.patientCode && p.patientCode === user.patientCode)
+          );
+
+          if (target) {
+            fetch(`/api/patients/${target.id}/timeline`)
+              .then(r => r.json())
+              .then(t => setPatientTimeline(t.patientTimeline))
+              .catch(() => setPatientTimeline(target));
+          } else {
+            setPatientTimeline({
+              id: user?.id || 'pat-user-01',
+              fullName: user?.name || 'Registered Patient',
+              email: user?.email || '',
+              gender: user?.gender || 'N/A',
+              dob: user?.dob || 'N/A',
+              phone: user?.phone || 'N/A',
+              bloodGroup: user?.bloodGroup || 'N/A',
+              patientCode: user?.patientCode || 'NEXO-PAT-000001'
+            });
+          }
         }
       })
       .catch(err => console.error(err))
@@ -240,13 +255,13 @@ export default function PatientDashboard() {
                 {displayName}
               </h1>
               <p className="text-xs text-slate-300 font-semibold mt-1 flex flex-wrap items-center gap-3">
-                <span>Gender: <strong className="text-white">{patient.gender || 'Male'}</strong></span>
+                <span>Gender: <strong className="text-white">{patient.gender || user?.gender || 'N/A'}</strong></span>
                 <span>•</span>
-                <span>DOB: <strong className="text-white">{patient.dob || '2004-05-07'}</strong></span>
+                <span>DOB: <strong className="text-white">{patient.dob || user?.dob || 'N/A'}</strong></span>
                 <span>•</span>
-                <span>Blood Group: <strong className="text-rose-400 font-extrabold">{patient.bloodGroup || 'O+'}</strong></span>
+                <span>Blood Group: <strong className="text-rose-400 font-extrabold">{patient.bloodGroup || user?.bloodGroup || 'N/A'}</strong></span>
                 <span>•</span>
-                <span>Phone: <strong className="text-slate-200">{patient.phone || '+1 (555) 012-3456'}</strong></span>
+                <span>Phone: <strong className="text-slate-200">{patient.phone || user?.phone || 'N/A'}</strong></span>
               </p>
             </div>
           </div>

@@ -22,7 +22,8 @@ import {
   Lock,
   Key,
   Copy,
-  Check
+  Check,
+  RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -293,12 +294,21 @@ export default function PatientsManagementPage() {
               : `Manage registered patients, universal IDs, and medical profiles for ${user?.hospitalName || 'your hospital'}.`}
           </p>
         </div>
-        <button
-          onClick={handleOpenModal}
-          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow flex items-center gap-1.5 transition-all shrink-0"
-        >
-          <Plus className="w-4 h-4" /> {isPlatformSuperAdmin ? 'Register Global Patient' : 'Register New Patient'}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => fetchPatients(search, isPlatformSuperAdmin ? true : isGlobalMode, selectedHospitalFilter)}
+            className="p-2.5 bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors"
+            title="Refresh Patient Registry"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={handleOpenModal}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow flex items-center gap-1.5 transition-all"
+          >
+            <Plus className="w-4 h-4" /> {isPlatformSuperAdmin ? 'Register Global Patient' : 'Register New Patient'}
+          </button>
+        </div>
       </div>
 
       {/* Search & Hospital Filter Bar */}
@@ -370,9 +380,9 @@ export default function PatientsManagementPage() {
                       </span>
                       <span className="block text-[10px] text-cyan-700 font-mono">Login: {p.email || p.patientCode}</span>
                     </td>
-                    <td className="p-4 font-semibold text-slate-700">
+                    <td className="p-4 font-semibold text-slate-700 whitespace-nowrap">
                       <span className="flex items-center gap-1.5 text-slate-900 font-extrabold">
-                        <Building2 className="w-3.5 h-3.5 text-cyan-600" /> {p.hospital?.name || 'Central Registry'}
+                        <Building2 className="w-3.5 h-3.5 text-cyan-600 shrink-0" /> {p.hospital?.name || 'Central Registry'}
                       </span>
                       <span className="text-[10px] text-slate-400 block font-normal">{p.hospital?.city || 'Universal Network'}</span>
                     </td>

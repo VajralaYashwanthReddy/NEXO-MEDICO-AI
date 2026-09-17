@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       // Find user by Email
       user = await prisma.user.findUnique({
         where: { email: inputClean.toLowerCase() },
-        include: { hospital: true }
+        include: { hospital: true, patientProfile: true }
       });
     }
 
@@ -94,7 +94,12 @@ export async function POST(req: NextRequest) {
         name: sanitizedName,
         role: user.role,
         hospitalId: user.hospitalId,
-        hospitalName: user.hospital?.name || 'Metropolitan General Hospital'
+        hospitalName: user.hospital?.name || 'Metropolitan General Hospital',
+        patientCode: user.patientProfile?.patientCode,
+        gender: user.patientProfile?.gender,
+        dob: user.patientProfile?.dob,
+        phone: user.patientProfile?.phone,
+        bloodGroup: user.patientProfile?.bloodGroup
       },
       token
     });
@@ -173,6 +178,10 @@ export async function POST(req: NextRequest) {
       name,
       role,
       patientCode: patientMatch ? patientMatch.patientCode : undefined,
+      gender: patientMatch?.gender,
+      dob: patientMatch?.dob,
+      phone: patientMatch?.phone,
+      bloodGroup: patientMatch?.bloodGroup,
       hospitalId,
       hospitalName
     };
