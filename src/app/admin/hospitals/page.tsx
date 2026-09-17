@@ -35,7 +35,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 
 export default function AdminHospitalsPage() {
-  const { user } = useAuth();
+  const { user, token, updateUser } = useAuth();
   const isPlatformSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const [hospitals, setHospitals] = useState<any[]>([]);
@@ -76,9 +76,20 @@ export default function AdminHospitalsPage() {
   });
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  const getAuthHeaders = () => {
+    const jwt = token || (typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : '');
+    return {
+      'Content-Type': 'application/json',
+      ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
+    };
+  };
+
   const fetchHospitals = (q = search) => {
     setLoading(true);
-    fetch(`/api/admin/hospitals?q=${encodeURIComponent(q)}`)
+    const jwt = token || (typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : '');
+    fetch(`/api/admin/hospitals?q=${encodeURIComponent(q)}`, {
+      headers: jwt ? { Authorization: `Bearer ${jwt}` } : {}
+    })
       .then(res => res.json())
       .then(data => {
         const list = data.hospitals || [];
@@ -108,6 +119,32 @@ export default function AdminHospitalsPage() {
 
   useEffect(() => {
     fetchHospitals(search);
+
+    const interval = setInterval(() => {
+      fetchHospitals(search);
+    }, 4000);
+
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/events');
+      eventSource.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === 'HOSPITAL_REGISTERED' || data.type === 'HOSPITAL_STATUS_UPDATED') {
+            fetchHospitals(search);
+          }
+        } catch (err) {
+          // ignore parse errors
+        }
+      };
+    } catch (e) {
+      // EventSource fallback
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (eventSource) eventSource.close();
+    };
   }, [search]);
 
   const handleAddHospital = async (e: React.FormEvent) => {
@@ -116,7 +153,7 @@ export default function AdminHospitalsPage() {
     try {
       const res = await fetch('/api/admin/hospitals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(addFormData)
       });
       const data = await res.json();
@@ -152,7 +189,7 @@ export default function AdminHospitalsPage() {
     try {
       const res = await fetch('/api/admin/hospitals', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           hospitalId: myHospital.id,
           ...profileForm
@@ -175,20 +212,34 @@ export default function AdminHospitalsPage() {
 
   const toggleHospitalStatus = async (hospitalId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-    await fetch('/api/admin/hospitals', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hospitalId, status: newStatus })
-    });
-    fetchHospitals(search);
+    setHospitals(prev => prev.map(h => h.id === hospitalId ? { ...h, status: newStatus } : h));
+
+    try {
+      const res = await fetch('/api/admin/hospitals', {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ hospitalId, status: newStatus })
+      });
+      if (!res.ok) {
+        setHospitals(prev => prev.map(h => h.id === hospitalId ? { ...h, status: currentStatus } : h));
+        const data = await res.json();
+        alert(data.error || 'Failed to update hospital status');
+      } else {
+        fetchHospitals(search);
+      }
+    } catch (err) {
+      setHospitals(prev => prev.map(h => h.id === hospitalId ? { ...h, status: currentStatus } : h));
+      console.error(err);
+    }
   };
 
   const handleSwitchToHospital = (hospital: any) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('nexo_active_hospital', hospital.id);
       localStorage.setItem('nexo_active_hospital_name', hospital.name);
-      window.location.href = `/admin/dashboard?hospitalId=${hospital.id}`;
     }
+    updateUser({ hospitalId: hospital.id, hospitalName: hospital.name });
+    window.location.href = `/admin/dashboard?hospitalId=${hospital.id}`;
   };
 
   const inspectionTabsList = [

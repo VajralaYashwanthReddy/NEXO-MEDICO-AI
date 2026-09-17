@@ -1,3 +1,8 @@
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { eventBroadcaster } from '@/lib/events';
+
 export interface RegisteredHospital {
   id: string;
   name: string;
@@ -110,59 +115,113 @@ const defaultHospitals: RegisteredHospital[] = [
   }
 ];
 
-const globalForHospitals = globalThis as unknown as { globalHospitalsStore: RegisteredHospital[] };
+const TEMP_HOSPITALS_FILE = path.join(os.tmpdir(), 'nexo_hospitals_cache.json');
+const allTimeHospitalsMap = new Map<string, RegisteredHospital>();
 
-if (!globalForHospitals.globalHospitalsStore) {
-  globalForHospitals.globalHospitalsStore = [...defaultHospitals];
+defaultHospitals.forEach(h => {
+  allTimeHospitalsMap.set(h.id, h);
+  if (h.registrationNo) allTimeHospitalsMap.set(h.registrationNo, h);
+});
+
+function loadTempCache(): RegisteredHospital[] {
+  try {
+    if (fs.existsSync(TEMP_HOSPITALS_FILE)) {
+      const data = fs.readFileSync(TEMP_HOSPITALS_FILE, 'utf8');
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        parsed.forEach(h => {
+          if (h && (h.id || h.registrationNo)) {
+            if (h.id) allTimeHospitalsMap.set(h.id, h);
+            if (h.registrationNo) allTimeHospitalsMap.set(h.registrationNo, h);
+          }
+        });
+      }
+    }
+  } catch (e) {}
+  return Array.from(new Set(allTimeHospitalsMap.values()));
+}
+
+function saveTempCache(hospitals: RegisteredHospital[]) {
+  try {
+    fs.writeFileSync(TEMP_HOSPITALS_FILE, JSON.stringify(hospitals, null, 2), 'utf8');
+  } catch (e) {}
 }
 
 export function getGlobalHospitals(): RegisteredHospital[] {
-  return globalForHospitals.globalHospitalsStore;
+  return loadTempCache();
 }
 
 export function addGlobalHospital(hospital: Partial<RegisteredHospital>): RegisteredHospital {
+  const current = loadTempCache();
+  const regNo = (hospital.registrationNo || `REG-${Date.now()}`).toUpperCase().trim();
+  const hospId = hospital.id || `hosp-${Date.now()}`;
+
   const newHosp: RegisteredHospital = {
-    id: hospital.id || `hosp-${Date.now()}`,
+    id: hospId,
     name: hospital.name || 'New Hospital Organization',
     type: hospital.type || 'General Hospital',
-    registrationNo: hospital.registrationNo || `REG-${Date.now()}`,
-    email: hospital.email || 'admin@hospital.com',
+    registrationNo: regNo,
+    email: hospital.email ? hospital.email.toLowerCase().trim() : 'admin@hospital.com',
     phone: hospital.phone || '+1 (555) 000-1122',
     emergencyContact: hospital.emergencyContact || hospital.phone || '+1 (555) 911-0000',
     address: hospital.address || '100 Medical Center Way',
     city: hospital.city || 'Metropolis',
     state: hospital.state || 'NY',
     country: hospital.country || 'USA',
-    status: 'ACTIVE',
+    status: hospital.status || 'ACTIVE',
     createdAt: hospital.createdAt ? String(hospital.createdAt) : new Date().toISOString(),
     _count: hospital._count || {
-      users: 5,
-      doctorProfiles: 3,
-      nurseProfiles: 4,
-      staffProfiles: 2,
-      patients: 6,
-      wards: 2,
-      beds: 20,
-      admissions: 3,
-      prescriptions: 8,
-      labOrders: 5
+      users: 6,
+      doctorProfiles: 4,
+      nurseProfiles: 5,
+      staffProfiles: 3,
+      patients: 8,
+      wards: 3,
+      beds: 30,
+      admissions: 4,
+      prescriptions: 10,
+      labOrders: 6
     }
   };
 
-  const exists = globalForHospitals.globalHospitalsStore.some(
-    h => h.id === newHosp.id || h.registrationNo === newHosp.registrationNo
-  );
-  if (!exists) {
-    globalForHospitals.globalHospitalsStore.unshift(newHosp);
-  }
+  allTimeHospitalsMap.set(newHosp.id, newHosp);
+  allTimeHospitalsMap.set(newHosp.registrationNo, newHosp);
+
+  const updatedList = Array.from(new Set(allTimeHospitalsMap.values()));
+  saveTempCache(updatedList);
+
+  try {
+    eventBroadcaster.broadcast('HOSPITAL_REGISTERED', {
+      hospital: newHosp,
+      hospitalId: newHosp.id,
+      name: newHosp.name,
+      registrationNo: newHosp.registrationNo
+    });
+  } catch (e) {}
+
   return newHosp;
 }
 
 export function updateGlobalHospitalStatus(hospitalId: string, status: string): RegisteredHospital | null {
-  const hosp = globalForHospitals.globalHospitalsStore.find(h => h.id === hospitalId);
-  if (hosp) {
-    hosp.status = status;
-    return hosp;
+  const current = loadTempCache();
+  const target = current.find(h => h.id === hospitalId || h.registrationNo === hospitalId);
+  if (target) {
+    target.status = status;
+    allTimeHospitalsMap.set(target.id, target);
+    if (target.registrationNo) allTimeHospitalsMap.set(target.registrationNo, target);
+
+    const updatedList = Array.from(new Set(allTimeHospitalsMap.values()));
+    saveTempCache(updatedList);
+
+    try {
+      eventBroadcaster.broadcast('HOSPITAL_STATUS_UPDATED', {
+        hospitalId: target.id,
+        status,
+        name: target.name
+      });
+    } catch (e) {}
+
+    return target;
   }
   return null;
 }
