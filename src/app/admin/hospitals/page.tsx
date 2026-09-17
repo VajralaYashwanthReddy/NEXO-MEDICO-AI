@@ -84,8 +84,8 @@ export default function AdminHospitalsPage() {
     };
   };
 
-  const fetchHospitals = (q = search) => {
-    setLoading(true);
+  const fetchHospitals = (q = search, showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     const jwt = token || (typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : '');
     fetch(`/api/admin/hospitals?q=${encodeURIComponent(q)}`, {
       headers: jwt ? { Authorization: `Bearer ${jwt}` } : {}
@@ -114,15 +114,13 @@ export default function AdminHospitalsPage() {
         }
       })
       .catch(err => console.error(err))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (showSpinner) setLoading(false);
+      });
   };
 
   useEffect(() => {
-    fetchHospitals(search);
-
-    const interval = setInterval(() => {
-      fetchHospitals(search);
-    }, 4000);
+    fetchHospitals(search, true);
 
     let eventSource: EventSource | null = null;
     try {
@@ -131,7 +129,7 @@ export default function AdminHospitalsPage() {
         try {
           const data = JSON.parse(e.data);
           if (data.type === 'HOSPITAL_REGISTERED' || data.type === 'HOSPITAL_STATUS_UPDATED') {
-            fetchHospitals(search);
+            fetchHospitals(search, false);
           }
         } catch (err) {
           // ignore parse errors
@@ -142,7 +140,6 @@ export default function AdminHospitalsPage() {
     }
 
     return () => {
-      clearInterval(interval);
       if (eventSource) eventSource.close();
     };
   }, [search]);
