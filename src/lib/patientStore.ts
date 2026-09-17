@@ -6,7 +6,7 @@ export interface GlobalPatient {
   id: string;
   patientCode: string;
   hospitalId: string;
-  userId?: string;
+  userId?: string | null;
   fullName: string;
   dob: string;
   gender: string;
@@ -18,7 +18,7 @@ export interface GlobalPatient {
   allergies?: string | null;
   conditions?: string | null;
   previousHistory?: string | null;
-  createdAt: string;
+  createdAt: string | Date;
   hospital?: { id: string; name: string; city: string };
   user?: { id: string; email: string; status: string };
 }
@@ -94,7 +94,8 @@ function loadTempCache(): GlobalPatient[] {
       if (Array.isArray(parsed) && parsed.length > 0) {
         parsed.forEach(p => {
           if (p && (p.patientCode || p.id)) {
-            allTimePatientsMap.set(p.patientCode || p.id, p);
+            const key = p.patientCode || p.id;
+            allTimePatientsMap.set(key, p);
           }
         });
       }
@@ -119,7 +120,7 @@ export function getGlobalPatients(): GlobalPatient[] {
 
 export function addGlobalPatient(newPatient: Partial<GlobalPatient>): GlobalPatient {
   const current = loadTempCache();
-  const count = current.length + 10;
+  const count = current.length + 1;
   const patientCode = newPatient.patientCode || `NEXO-PAT-${String(count).padStart(6, '0')}`;
 
   const created: GlobalPatient = {
@@ -137,13 +138,13 @@ export function addGlobalPatient(newPatient: Partial<GlobalPatient>): GlobalPati
     allergies: newPatient.allergies || null,
     conditions: newPatient.conditions || null,
     previousHistory: newPatient.previousHistory || null,
-    createdAt: new Date().toISOString(),
+    userId: newPatient.userId || null,
+    createdAt: newPatient.createdAt ? String(newPatient.createdAt) : new Date().toISOString(),
     hospital: newPatient.hospital || { id: 'hosp-metro-01', name: 'Metropolitan General Hospital', city: 'Metropolis' },
-    user: newPatient.user || { id: `usr-${Date.now()}`, email: newPatient.email || '', status: 'ACTIVE' }
+    user: newPatient.user || { id: `usr-${Date.now()}`, email: newPatient.email || `${patientCode.toLowerCase()}@patient.nexomedico.ai`, status: 'ACTIVE' }
   };
 
   allTimePatientsMap.set(created.patientCode, created);
-  allTimePatientsMap.set(created.id, created);
   
   const updatedList = Array.from(allTimePatientsMap.values());
   saveTempCache(updatedList);

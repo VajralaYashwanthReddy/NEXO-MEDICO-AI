@@ -98,6 +98,11 @@ export async function POST(req: NextRequest) {
       }
     });
 
+    // Add to persistent global store cache
+    try {
+      addGlobalPatient(patient as any);
+    } catch (e) {}
+
     try {
       eventBroadcaster.broadcast('PATIENT_REGISTERED', {
         patient,

@@ -28,7 +28,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 
 export default function PatientsManagementPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const isPlatformSuperAdmin = user?.role === 'SUPER_ADMIN';
 
   const [patients, setPatients] = useState<any[]>([]);
@@ -60,6 +60,14 @@ export default function PatientsManagementPage() {
     previousHistory: 'None'
   });
 
+  const getAuthHeaders = () => {
+    const jwt = token || (typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null);
+    return {
+      'Content-Type': 'application/json',
+      ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
+    };
+  };
+
   const handleOpenModal = () => {
     setFormData(prev => ({
       ...prev,
@@ -69,7 +77,7 @@ export default function PatientsManagementPage() {
   };
 
   const fetchPatients = (query = search, global = isGlobalMode, hospitalId = selectedHospitalFilter) => {
-    const jwt = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
+    const jwt = token || (typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null);
     let url = `/api/patients?global=${global}&q=${encodeURIComponent(query)}`;
     if (hospitalId) {
       url += `&hospitalId=${hospitalId}`;
@@ -86,12 +94,12 @@ export default function PatientsManagementPage() {
               : [];
             
             const mergedMap = new Map();
-            // 1. Keep previously seen patients in state so records never drop/flicker
-            prev.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
-            // 2. Incoming server patients
-            data.patients.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
-            // 3. Persistent local storage patients
+            // 1. Base from localStorage
             localSaved.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
+            // 2. Base from previous component state
+            prev.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
+            // 3. Incoming server patients are authoritative (overrides local cache)
+            data.patients.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
 
             const mergedList = Array.from(mergedMap.values());
             if (typeof window !== 'undefined') {
@@ -106,7 +114,10 @@ export default function PatientsManagementPage() {
   };
 
   useEffect(() => {
-    fetch('/api/admin/hospitals')
+    const jwt = token || (typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null);
+    fetch('/api/admin/hospitals', {
+      headers: jwt ? { Authorization: `Bearer ${jwt}` } : {}
+    })
       .then(res => res.json())
       .then(data => setHospitals(data.hospitals || []));
 
@@ -163,13 +174,9 @@ export default function PatientsManagementPage() {
         ...formData,
         hospitalId: formData.hospitalId || user?.hospitalId || ''
       };
-      const jwt = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
       const res = await fetch('/api/patients', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -178,13 +185,13 @@ export default function PatientsManagementPage() {
         setCredentialsModal(data.credentials);
         
         if (data.patient) {
-          const localSaved = typeof window !== 'undefined'
-            ? JSON.parse(localStorage.getItem('nexo_custom_registered_patients') || '[]')
-            : [];
-          const updatedLocal = [data.patient, ...localSaved.filter((p: any) => p.patientCode !== data.patient.patientCode)];
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('nexo_custom_registered_patients', JSON.stringify(updatedLocal));
-          }
+          setPatients(prev => {
+            const updated = [data.patient, ...prev.filter((p: any) => p.patientCode !== data.patient.patientCode)];
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('nexo_custom_registered_patients', JSON.stringify(updated));
+            }
+            return updated;
+          });
         }
 
         setFormData({
@@ -208,18 +215,47 @@ export default function PatientsManagementPage() {
       }
     } catch (err) {
       console.error(err);
+      alert('Error registering patient');
     }
   };
 
   const togglePatientStatus = async (patientId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    setPatients(prev => {
+      const updated = prev.map(p => {
+        if (p.id === patientId || p.patientCode === patientId) {
+          return {
+            ...p,
+            user: { ...(p.user || {}), status: newStatus }
+          };
+        }
+        return p;
+      });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('nexo_custom_registered_patients', JSON.stringify(updated));
+      }
+      return updated;
+    });
+
     try {
       const res = await fetch('/api/patients', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ patientId, status: newStatus })
       });
-      if (res.ok) {
+      if (!res.ok) {
+        setPatients(prev => prev.map(p => {
+          if (p.id === patientId || p.patientCode === patientId) {
+            return {
+              ...p,
+              user: { ...(p.user || {}), status: currentStatus }
+            };
+          }
+          return p;
+        }));
+        const data = await res.json();
+        alert(data.error || 'Failed to update patient account status');
+      } else {
         fetchPatients(search, isGlobalMode, selectedHospitalFilter);
       }
     } catch (err) {
@@ -381,7 +417,7 @@ export default function PatientsManagementPage() {
 
                       {isPlatformSuperAdmin && (
                         <button
-                          onClick={() => togglePatientStatus(p.id, isSuspended ? 'SUSPENDED' : 'ACTIVE')}
+                          onClick={() => togglePatientStatus(p.id, p.user?.status || 'ACTIVE')}
                           className={`px-3 py-1.5 text-[11px] font-extrabold rounded-lg transition-all ${
                             isSuspended
                               ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
