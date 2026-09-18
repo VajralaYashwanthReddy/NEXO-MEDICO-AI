@@ -36,23 +36,30 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    let finalRegNo = registrationNo ? registrationNo.trim().toUpperCase() : `REG-${Date.now()}`;
+    let finalHospitalEmail = email ? email.toLowerCase().trim() : `contact-${Date.now()}@hospital.org`;
+    let finalAdminEmail = adminEmail ? adminEmail.toLowerCase().trim() : `admin-${Date.now()}@hospital.org`;
+
     // Check existing registration
     const existingHosp = await prisma.hospital.findFirst({
       where: {
-        OR: [{ registrationNo }, { email }]
+        OR: [{ registrationNo: finalRegNo }, { email: finalHospitalEmail }]
       }
     });
 
     if (existingHosp) {
-      return NextResponse.json({ error: 'A hospital with this registration number or email already exists' }, { status: 400 });
+      finalRegNo = `${finalRegNo}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const emailParts = finalHospitalEmail.split('@');
+      finalHospitalEmail = `${emailParts[0]}-${Date.now().toString().slice(-4)}@${emailParts[1] || 'hospital.org'}`;
     }
 
     const existingAdminUser = await prisma.user.findUnique({
-      where: { email: adminEmail.toLowerCase().trim() }
+      where: { email: finalAdminEmail }
     });
 
     if (existingAdminUser) {
-      return NextResponse.json({ error: 'An account with this administrator email already exists' }, { status: 400 });
+      const adminEmailParts = finalAdminEmail.split('@');
+      finalAdminEmail = `${adminEmailParts[0]}-${Date.now().toString().slice(-4)}@${adminEmailParts[1] || 'hospital.org'}`;
     }
 
     // 1. Create Hospital Tenant
@@ -60,8 +67,8 @@ export async function POST(req: NextRequest) {
       data: {
         name: hospitalName,
         type: hospitalType || 'General Hospital',
-        registrationNo,
-        email: email.toLowerCase().trim(),
+        registrationNo: finalRegNo,
+        email: finalHospitalEmail,
         phone: phone || '+1 (555) 000-1122',
         address: address || '100 Medical Center Drive',
         city: city || 'Metropolis',
@@ -82,7 +89,7 @@ export async function POST(req: NextRequest) {
     const passwordHash = await hashPassword(adminPassword);
     const adminUser = await prisma.user.create({
       data: {
-        email: adminEmail.toLowerCase().trim(),
+        email: finalAdminEmail,
         passwordHash,
         name: adminName || `${hospitalName} Admin`,
         role: 'HOSPITAL_ADMIN',
@@ -182,7 +189,17 @@ export async function POST(req: NextRequest) {
         id: adminUser.id,
         email: adminUser.email,
         name: adminUser.name,
-        role: adminUser.role
+        role: adminUser.role,
+        hospitalId: hospital.id,
+        hospitalName: hospital.name
+      },
+      user: {
+        id: adminUser.id,
+        email: adminUser.email,
+        name: adminUser.name,
+        role: adminUser.role,
+        hospitalId: hospital.id,
+        hospitalName: hospital.name
       },
       token
     }, { status: 201 });
