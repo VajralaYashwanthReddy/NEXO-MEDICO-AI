@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, comparePasswords, hashPassword, signJwtToken, formatNameFromEmail } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { createAuditLog } from '@/lib/audit';
+import { getGlobalPatients } from '@/lib/patientStore';
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,6 +23,10 @@ export async function GET(req: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    if (user.status === 'SUSPENDED') {
+      return NextResponse.json({ error: 'Your account is suspended' }, { status: 403 });
     }
 
     // Get role permissions
@@ -61,6 +66,12 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     const userPayload = getUserFromRequest(req);
     if (userPayload) {
+      const globalPatients = getGlobalPatients();
+      const pMatch = globalPatients.find(p => p.id === userPayload.id || p.patientCode === (userPayload as any).patientCode || p.email.toLowerCase() === userPayload.email?.toLowerCase());
+      if (pMatch && pMatch.user?.status === 'SUSPENDED') {
+        return NextResponse.json({ error: 'Your account is suspended' }, { status: 403 });
+      }
+
       const sanitizedName = (userPayload.name && userPayload.name !== 'Patient Account' && userPayload.name !== 'Registered Patient')
         ? userPayload.name
         : formatNameFromEmail(userPayload.email);

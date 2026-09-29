@@ -241,8 +241,13 @@ export async function PUT(req: NextRequest) {
     togglePatientStatusInMemory(patientId, status);
 
     try {
-      const patient = await prisma.patient.findUnique({
-        where: { id: patientId },
+      const patient = await prisma.patient.findFirst({
+        where: {
+          OR: [
+            { id: patientId },
+            { patientCode: patientId }
+          ]
+        },
         include: { user: true }
       });
 

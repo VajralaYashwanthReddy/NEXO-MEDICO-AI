@@ -133,6 +133,11 @@ export async function POST(req: NextRequest) {
     let hospitalName = 'Metropolitan General Hospital';
 
     if (patientMatch) {
+      if (patientMatch.user?.status === 'SUSPENDED' || (patientMatch as any).status === 'SUSPENDED') {
+        return NextResponse.json({
+          error: 'Your account is inactive/suspended. Please contact system administrator.'
+        }, { status: 403 });
+      }
       role = 'PATIENT';
       name = patientMatch.fullName;
       hospitalId = patientMatch.hospitalId;
