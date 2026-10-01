@@ -97,7 +97,7 @@ export default function PatientDashboard() {
               dob: user?.dob || 'N/A',
               phone: user?.phone || 'N/A',
               bloodGroup: user?.bloodGroup || 'N/A',
-              patientCode: user?.patientCode || 'NEXO-PAT-000001'
+              patientCode: user?.patientCode || 'N/A'
             });
           }
         }
@@ -248,7 +248,7 @@ export default function PatientDashboard() {
                   🌐 Universal Health Passport
                 </span>
                 <span className="text-xs font-mono font-black text-cyan-300 bg-cyan-950/80 px-2.5 py-0.5 rounded-md border border-cyan-800/60">
-                  {patient.patientCode || 'NEXO-PAT-000002'}
+                  {patient.patientCode || user?.patientCode || 'N/A'}
                 </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
@@ -378,7 +378,7 @@ export default function PatientDashboard() {
               <h3 className="text-xl font-black text-slate-900 mt-0.5">Complete Cross-Hospital Medical History</h3>
             </div>
             <span className="text-xs font-mono font-black text-blue-800 bg-blue-50 px-3 py-1 rounded-xl border border-blue-200">
-              Universal ID: {patient.patientCode || 'NEXO-PAT-000002'}
+              Universal ID: {patient.patientCode || user?.patientCode || 'N/A'}
             </span>
           </div>
 

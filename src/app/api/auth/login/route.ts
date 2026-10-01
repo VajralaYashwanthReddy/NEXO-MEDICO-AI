@@ -122,9 +122,11 @@ export async function POST(req: NextRequest) {
 
     // Check if patient exists in Patient Store
     let patientMatch = globalPatients.find(p =>
-      p.email.toLowerCase() === emailLower ||
-      p.patientCode.toUpperCase() === inputClean.toUpperCase() ||
-      (p.user?.email && p.user.email.toLowerCase() === emailLower)
+      (p.email && p.email.toLowerCase() === emailLower) ||
+      (p.patientCode && p.patientCode.toUpperCase() === inputClean.toUpperCase()) ||
+      (p.user?.email && p.user.email.toLowerCase() === emailLower) ||
+      (p.fullName && p.fullName.toLowerCase() === emailLower) ||
+      (p.fullName && formatNameFromEmail(inputClean).toLowerCase() === p.fullName.toLowerCase())
     );
 
     let role = 'PATIENT';
@@ -169,11 +171,7 @@ export async function POST(req: NextRequest) {
 
       patientMatch = addGlobalPatient({
         fullName: name,
-        email: emailLower,
-        phone: '+1 (555) 012-3456',
-        gender: 'Male',
-        dob: '2004-05-07',
-        bloodGroup: 'O+'
+        email: emailLower
       });
     }
 

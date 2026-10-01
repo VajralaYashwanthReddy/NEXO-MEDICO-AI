@@ -120,8 +120,74 @@ export function getGlobalPatients(): GlobalPatient[] {
 
 export function addGlobalPatient(newPatient: Partial<GlobalPatient>): GlobalPatient {
   const current = loadTempCache();
-  const count = current.length + 1;
-  const patientCode = newPatient.patientCode || `NEXO-PAT-${String(count).padStart(6, '0')}`;
+
+  // Search if patient already exists by email, patientCode, id, or fullName
+  const emailLower = newPatient.email?.toLowerCase().trim();
+  const codeUpper = newPatient.patientCode?.toUpperCase().trim();
+  const idStr = newPatient.id?.trim();
+  const nameLower = newPatient.fullName?.toLowerCase().trim();
+
+  let existing = current.find(p => {
+    if (idStr && p.id === idStr) return true;
+    if (codeUpper && p.patientCode?.toUpperCase() === codeUpper) return true;
+    if (emailLower && p.email?.toLowerCase() === emailLower) return true;
+    if (emailLower && p.user?.email && p.user.email.toLowerCase() === emailLower) return true;
+    if (nameLower && nameLower !== 'registered patient' && nameLower !== 'patient account' && p.fullName?.toLowerCase() === nameLower) return true;
+    return false;
+  });
+
+  if (existing) {
+    // Update existing patient with non-null/non-empty properties without changing patientCode or id
+    if (newPatient.fullName && newPatient.fullName !== 'Registered Patient' && newPatient.fullName !== 'Patient Account') {
+      existing.fullName = newPatient.fullName;
+    }
+    if (newPatient.dob && newPatient.dob !== 'N/A' && newPatient.dob !== '1995-01-01') {
+      existing.dob = newPatient.dob;
+    }
+    if (newPatient.gender && newPatient.gender !== 'N/A') {
+      existing.gender = newPatient.gender;
+    }
+    if (newPatient.phone && newPatient.phone !== 'N/A' && newPatient.phone !== '+1 (555) 000-0000') {
+      existing.phone = newPatient.phone;
+    }
+    if (newPatient.email && newPatient.email.includes('@')) {
+      existing.email = newPatient.email;
+    }
+    if (newPatient.address && newPatient.address !== 'N/A') {
+      existing.address = newPatient.address;
+    }
+    if (newPatient.emergencyContact && newPatient.emergencyContact !== 'N/A') {
+      existing.emergencyContact = newPatient.emergencyContact;
+    }
+    if (newPatient.bloodGroup && newPatient.bloodGroup !== 'N/A') {
+      existing.bloodGroup = newPatient.bloodGroup;
+    }
+    if (newPatient.allergies) {
+      existing.allergies = newPatient.allergies;
+    }
+    if (newPatient.conditions) {
+      existing.conditions = newPatient.conditions;
+    }
+    if (newPatient.userId) {
+      existing.userId = newPatient.userId;
+    }
+
+    allTimePatientsMap.set(existing.patientCode || existing.id, existing);
+    saveTempCache(Array.from(allTimePatientsMap.values()));
+    return existing;
+  }
+
+  // Calculate max numeric NEXO-PAT-XXXXXX code to guarantee unique constant sequential patient code
+  let maxNum = 0;
+  current.forEach(p => {
+    const match = p.patientCode?.match(/NEXO-PAT-(\d+)/i);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNum) maxNum = num;
+    }
+  });
+  const nextNum = maxNum + 1;
+  const patientCode = newPatient.patientCode || `NEXO-PAT-${String(nextNum).padStart(6, '0')}`;
 
   const created: GlobalPatient = {
     id: newPatient.id || `pat-${Date.now()}`,

@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
       where: { id: userPayload.id },
       include: {
         hospital: true,
+        patientProfile: true,
         userPermissions: {
           include: { permission: true }
         }
@@ -51,6 +52,9 @@ export async function GET(req: NextRequest) {
       ? user.name
       : formatNameFromEmail(user.email);
 
+    const globalPatients = getGlobalPatients();
+    const pMatch = globalPatients.find(p => p.userId === userPayload.id || p.id === userPayload.id || p.patientCode === (userPayload as any).patientCode || p.email?.toLowerCase() === user.email?.toLowerCase());
+
     return NextResponse.json({
       user: {
         id: user.id,
@@ -60,6 +64,11 @@ export async function GET(req: NextRequest) {
         hospitalId: user.hospitalId,
         hospitalName: user.hospital?.name || null,
         departmentId: user.departmentId,
+        patientCode: user.patientProfile?.patientCode || pMatch?.patientCode,
+        gender: user.patientProfile?.gender || pMatch?.gender,
+        dob: user.patientProfile?.dob || pMatch?.dob,
+        phone: user.patientProfile?.phone || pMatch?.phone,
+        bloodGroup: user.patientProfile?.bloodGroup || pMatch?.bloodGroup,
         permissions: user.role === 'SUPER_ADMIN' || user.role === 'HOSPITAL_ADMIN' ? ['*'] : effectivePermissions
       }
     });
@@ -67,7 +76,7 @@ export async function GET(req: NextRequest) {
     const userPayload = getUserFromRequest(req);
     if (userPayload) {
       const globalPatients = getGlobalPatients();
-      const pMatch = globalPatients.find(p => p.id === userPayload.id || p.patientCode === (userPayload as any).patientCode || p.email.toLowerCase() === userPayload.email?.toLowerCase());
+      const pMatch = globalPatients.find(p => p.userId === userPayload.id || p.id === userPayload.id || p.patientCode === (userPayload as any).patientCode || p.email?.toLowerCase() === userPayload.email?.toLowerCase());
       if (pMatch && pMatch.user?.status === 'SUSPENDED') {
         return NextResponse.json({ error: 'Your account is suspended' }, { status: 403 });
       }
@@ -85,6 +94,11 @@ export async function GET(req: NextRequest) {
           hospitalId: userPayload.hospitalId,
           hospitalName: userPayload.role === 'SUPER_ADMIN' ? 'All Platform Tenants' : 'Metropolitan General Hospital',
           departmentId: userPayload.departmentId,
+          patientCode: (userPayload as any).patientCode || pMatch?.patientCode,
+          gender: (userPayload as any).gender || pMatch?.gender,
+          dob: (userPayload as any).dob || pMatch?.dob,
+          phone: (userPayload as any).phone || pMatch?.phone,
+          bloodGroup: (userPayload as any).bloodGroup || pMatch?.bloodGroup,
           permissions: ['*']
         }
       });
