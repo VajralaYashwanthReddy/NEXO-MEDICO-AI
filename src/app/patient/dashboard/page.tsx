@@ -71,15 +71,24 @@ export default function PatientDashboard() {
 
   const fetchTimeline = () => {
     setLoadingTimeline(true);
-    fetch('/api/patients?global=true')
+    const localSavedStr = typeof window !== 'undefined' ? localStorage.getItem('nexo_custom_registered_patients') : null;
+    let localPatients: any[] = [];
+    if (localSavedStr) {
+      try { localPatients = JSON.parse(localSavedStr); } catch (e) {}
+    }
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (localPatients.length > 0) {
+      try {
+        headers['x-client-patients'] = encodeURIComponent(JSON.stringify(localPatients));
+      } catch (e) {}
+    }
+
+    fetch('/api/patients?global=true', { headers })
       .then(r => r.json())
       .then(d => {
-        const localSavedStr = typeof window !== 'undefined' ? localStorage.getItem('nexo_custom_registered_patients') : null;
-        let localPatients: any[] = [];
-        if (localSavedStr) {
-          try { localPatients = JSON.parse(localSavedStr); } catch (e) {}
-        }
-
         const serverPatients = (d.patients && Array.isArray(d.patients)) ? d.patients : [];
         const allPatients = [...serverPatients, ...localPatients];
 

@@ -17,6 +17,20 @@ export async function GET(req: NextRequest) {
     const hospitalIdFilter = searchParams.get('hospitalId');
     const isGlobal = searchParams.get('global') === 'true' || user.role === 'SUPER_ADMIN' || search.toUpperCase().startsWith('NEXO-PAT-');
 
+    const clientPatientsHeader = req.headers.get('x-client-patients');
+    if (clientPatientsHeader) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(clientPatientsHeader));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          parsed.forEach(p => {
+            if (p && (p.patientCode || p.id)) {
+              addGlobalPatient(p);
+            }
+          });
+        }
+      } catch (e) {}
+    }
+
     let dbPatients: any[] = [];
     try {
       dbPatients = await prisma.patient.findMany({

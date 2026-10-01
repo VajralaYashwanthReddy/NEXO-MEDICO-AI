@@ -77,6 +77,24 @@ const defaultPatients: GlobalPatient[] = [
     createdAt: new Date().toISOString(),
     hospital: { id: 'hosp-apollo-02', name: 'Apollo City Hospital', city: 'Metropolis' },
     user: { id: 'usr-pat-03', email: 'yashwanthvajrala7995@gmail.com', status: 'ACTIVE' }
+  },
+  {
+    id: 'pat-742480',
+    patientCode: 'NEXO-PAT-742480',
+    hospitalId: 'hosp-metro-01',
+    fullName: 'Vijay',
+    dob: '2006-07-28',
+    gender: 'Male',
+    phone: '9059810838',
+    email: 'vijay90595@gmail.com',
+    address: 'Metropolis',
+    emergencyContact: 'Family - 9059810838',
+    bloodGroup: 'A+',
+    allergies: null,
+    conditions: null,
+    createdAt: new Date().toISOString(),
+    hospital: { id: 'hosp-metro-01', name: 'Metropolitan General Hospital', city: 'Metropolis' },
+    user: { id: 'usr-pat-742480', email: 'vijay90595@gmail.com', status: 'SUSPENDED' }
   }
 ];
 

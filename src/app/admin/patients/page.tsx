@@ -79,28 +79,37 @@ export default function PatientsManagementPage() {
 
   const fetchPatients = (query = search, global = isGlobalMode, hospitalId = selectedHospitalFilter) => {
     const jwt = token || (typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null);
+    const localSaved = typeof window !== 'undefined'
+      ? JSON.parse(localStorage.getItem('nexo_custom_registered_patients') || '[]')
+      : [];
+
     let url = `/api/patients?global=${global}&q=${encodeURIComponent(query)}`;
     if (hospitalId) {
       url += `&hospitalId=${hospitalId}`;
     }
-    fetch(url, {
-      headers: jwt ? { Authorization: `Bearer ${jwt}` } : {}
-    })
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+    if (localSaved.length > 0) {
+      try {
+        headers['x-client-patients'] = encodeURIComponent(JSON.stringify(localSaved));
+      } catch (e) {}
+    }
+
+    fetch(url, { headers })
       .then(res => res.json())
       .then(data => {
         if (data.patients && Array.isArray(data.patients)) {
           setPatients(prev => {
-            const localSaved = typeof window !== 'undefined'
-              ? JSON.parse(localStorage.getItem('nexo_custom_registered_patients') || '[]')
-              : [];
-            
             const mergedMap = new Map();
             // 1. Base from localStorage
-            localSaved.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
+            localSaved.forEach((p: any) => { if (p && (p.patientCode || p.id)) mergedMap.set(p.patientCode || p.id, p); });
             // 2. Base from previous component state
-            prev.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
-            // 3. Incoming server patients are authoritative (overrides local cache)
-            data.patients.forEach((p: any) => mergedMap.set(p.patientCode || p.id, p));
+            prev.forEach((p: any) => { if (p && (p.patientCode || p.id)) mergedMap.set(p.patientCode || p.id, p); });
+            // 3. Incoming server patients are authoritative
+            data.patients.forEach((p: any) => { if (p && (p.patientCode || p.id)) mergedMap.set(p.patientCode || p.id, p); });
 
             const mergedList = Array.from(mergedMap.values());
             if (typeof window !== 'undefined') {
