@@ -248,7 +248,19 @@ export default function PatientDashboard() {
     return 'Patient Account';
   };
 
+  const getValid = (...vals: (string | null | undefined)[]) => {
+    for (const v of vals) {
+      if (v && v !== 'N/A' && v.trim() !== '') return v;
+    }
+    return 'N/A';
+  };
+
   const displayName = getCleanDisplayName();
+  const displayGender = getValid(patient.gender, user?.gender);
+  const displayDob = getValid(patient.dob, user?.dob);
+  const displayBloodGroup = getValid(patient.bloodGroup, user?.bloodGroup);
+  const displayPhone = getValid(patient.phone, user?.phone);
+  const displayPatientCode = getValid(patient.patientCode, user?.patientCode);
 
   return (
     <div className="space-y-6 text-slate-900 select-none max-w-7xl mx-auto">
@@ -267,20 +279,20 @@ export default function PatientDashboard() {
                   🌐 Universal Health Passport
                 </span>
                 <span className="text-xs font-mono font-black text-cyan-300 bg-cyan-950/80 px-2.5 py-0.5 rounded-md border border-cyan-800/60">
-                  {patient.patientCode || user?.patientCode || 'N/A'}
+                  {displayPatientCode}
                 </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                 {displayName}
               </h1>
               <p className="text-xs text-slate-300 font-semibold mt-1 flex flex-wrap items-center gap-3">
-                <span>Gender: <strong className="text-white">{patient.gender || user?.gender || 'N/A'}</strong></span>
+                <span>Gender: <strong className="text-white">{displayGender}</strong></span>
                 <span>•</span>
-                <span>DOB: <strong className="text-white">{patient.dob || user?.dob || 'N/A'}</strong></span>
+                <span>DOB: <strong className="text-white">{displayDob}</strong></span>
                 <span>•</span>
-                <span>Blood Group: <strong className="text-rose-400 font-extrabold">{patient.bloodGroup || user?.bloodGroup || 'N/A'}</strong></span>
+                <span>Blood Group: <strong className="text-rose-400 font-extrabold">{displayBloodGroup}</strong></span>
                 <span>•</span>
-                <span>Phone: <strong className="text-slate-200">{patient.phone || user?.phone || 'N/A'}</strong></span>
+                <span>Phone: <strong className="text-slate-200">{displayPhone}</strong></span>
               </p>
             </div>
           </div>
@@ -397,7 +409,7 @@ export default function PatientDashboard() {
               <h3 className="text-xl font-black text-slate-900 mt-0.5">Complete Cross-Hospital Medical History</h3>
             </div>
             <span className="text-xs font-mono font-black text-blue-800 bg-blue-50 px-3 py-1 rounded-xl border border-blue-200">
-              Universal ID: {patient.patientCode || user?.patientCode || 'N/A'}
+              Universal ID: {displayPatientCode}
             </span>
           </div>
 

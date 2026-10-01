@@ -147,7 +147,7 @@ export function addGlobalPatient(newPatient: Partial<GlobalPatient>): GlobalPati
     if (newPatient.gender && newPatient.gender !== 'N/A') {
       existing.gender = newPatient.gender;
     }
-    if (newPatient.phone && newPatient.phone !== 'N/A' && newPatient.phone !== '+1 (555) 000-0000') {
+    if (newPatient.phone && newPatient.phone !== 'N/A' && newPatient.phone.trim() !== '') {
       existing.phone = newPatient.phone;
     }
     if (newPatient.email && newPatient.email.includes('@')) {
