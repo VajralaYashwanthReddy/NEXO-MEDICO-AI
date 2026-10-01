@@ -23,7 +23,8 @@ import {
   Key,
   Copy,
   Check,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -273,6 +274,36 @@ export default function PatientsManagementPage() {
     }
   };
 
+  const handleDeletePatient = async (patientId: string, patientName: string) => {
+    if (!confirm(`Are you sure you want to permanently delete patient "${patientName}"? This action cannot be undone.`)) {
+      return;
+    }
+    setPatients(prev => {
+      const updated = prev.filter(p => p.id !== patientId && p.patientCode !== patientId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('nexo_custom_registered_patients', JSON.stringify(updated));
+      }
+      return updated;
+    });
+
+    try {
+      const res = await fetch(`/api/patients?patientId=${encodeURIComponent(patientId)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete patient record');
+        fetchPatients(search, isGlobalMode, selectedHospitalFilter);
+      } else {
+        fetchPatients(search, isGlobalMode, selectedHospitalFilter);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error deleting patient');
+    }
+  };
+
   const copyCredentials = () => {
     if (!credentialsModal) return;
     const text = `Nexo Medico AI Patient Portal Login:\nURL: http://localhost:3000/login\nUniversal Patient ID: ${credentialsModal.patientCode}\nLogin Email/ID: ${credentialsModal.loginIdentifier}\nPassword: ${credentialsModal.defaultPassword}`;
@@ -435,16 +466,26 @@ export default function PatientsManagementPage() {
                       </Link>
 
                       {isPlatformSuperAdmin && (
-                        <button
-                          onClick={() => togglePatientStatus(p.id, p.user?.status || 'ACTIVE')}
-                          className={`px-3 py-1.5 text-[11px] font-extrabold rounded-lg transition-all ${
-                            isSuspended
-                              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                              : 'bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200'
-                          }`}
-                        >
-                          {isSuspended ? 'Activate' : 'Suspend Account'}
-                        </button>
+                        <>
+                          <button
+                            onClick={() => togglePatientStatus(p.id, p.user?.status || 'ACTIVE')}
+                            className={`px-3 py-1.5 text-[11px] font-extrabold rounded-lg transition-all ${
+                              isSuspended
+                                ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                                : 'bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200'
+                            }`}
+                          >
+                            {isSuspended ? 'Activate' : 'Suspend Account'}
+                          </button>
+
+                          <button
+                            onClick={() => handleDeletePatient(p.id || p.patientCode, p.fullName)}
+                            className="px-3 py-1.5 text-[11px] font-extrabold rounded-lg transition-all bg-rose-600 hover:bg-rose-700 text-white shadow-xs inline-flex items-center gap-1"
+                            title="Permanently Delete Patient Record"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete Permanently
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>

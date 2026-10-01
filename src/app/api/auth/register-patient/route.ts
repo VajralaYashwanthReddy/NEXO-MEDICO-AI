@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { hashPassword, signJwtToken } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
 import { eventBroadcaster } from '@/lib/events';
-import { addGlobalPatient } from '@/lib/patientStore';
+import { addGlobalPatient, getGlobalPatients } from '@/lib/patientStore';
 
 export async function POST(req: NextRequest) {
   let body: any = {};
@@ -32,11 +32,41 @@ export async function POST(req: NextRequest) {
   }
 
   const emailClean = email.toLowerCase().trim();
+  const phoneClean = phone.trim();
+  const phoneDigits = phoneClean.replace(/\D/g, '');
+
+  // Check existing patient in memory store first (by email or phone number)
+  const globalPatients = getGlobalPatients();
+  const existingInStore = globalPatients.find((p: any) => {
+    if (p.email && p.email.toLowerCase().trim() === emailClean) return true;
+    if (p.user?.email && p.user.email.toLowerCase().trim() === emailClean) return true;
+    if (p.phone) {
+      const pDigits = p.phone.replace(/\D/g, '');
+      if (phoneDigits.length >= 7 && pDigits.length >= 7 && (pDigits.endsWith(phoneDigits) || phoneDigits.endsWith(pDigits))) return true;
+      if (p.phone.trim() === phoneClean) return true;
+    }
+    return false;
+  });
+
+  if (existingInStore) {
+    return NextResponse.json({
+      error: 'An account with this email address or phone number is already registered. Please login instead.'
+    }, { status: 400 });
+  }
 
   try {
-    const existingUser = await prisma.user.findUnique({ where: { email: emailClean } });
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: emailClean },
+          { patientProfile: { phone: phoneClean } }
+        ]
+      }
+    });
     if (existingUser) {
-      return NextResponse.json({ error: 'An account with this email address already exists. Please login instead.' }, { status: 400 });
+      return NextResponse.json({
+        error: 'An account with this email address or phone number is already registered. Please login instead.'
+      }, { status: 400 });
     }
 
     // Generate unique Universal Patient ID (NEXO-PAT-xxxxxx)

@@ -250,3 +250,18 @@ export function togglePatientStatusInMemory(patientId: string, newStatus: string
   }
   return false;
 }
+
+export function deleteGlobalPatientInMemory(patientId: string): boolean {
+  const current = loadTempCache();
+  const target = current.find(p => p.id === patientId || p.patientCode === patientId || p.email?.toLowerCase() === patientId.toLowerCase());
+  if (target) {
+    allTimePatientsMap.delete(target.patientCode);
+    allTimePatientsMap.delete(target.id);
+    const updatedList = Array.from(allTimePatientsMap.values()).filter(p => p.id !== target.id && p.patientCode !== target.patientCode);
+    allTimePatientsMap.clear();
+    updatedList.forEach(p => allTimePatientsMap.set(p.patientCode || p.id, p));
+    saveTempCache(updatedList);
+    return true;
+  }
+  return false;
+}

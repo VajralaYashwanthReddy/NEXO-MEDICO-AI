@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getUserFromRequest, hashPassword } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
 import { eventBroadcaster } from '@/lib/events';
-import { getGlobalPatients, addGlobalPatient, togglePatientStatusInMemory } from '@/lib/patientStore';
+import { getGlobalPatients, addGlobalPatient, togglePatientStatusInMemory, deleteGlobalPatientInMemory } from '@/lib/patientStore';
 
 export async function GET(req: NextRequest) {
   try {
@@ -123,6 +123,28 @@ export async function POST(req: NextRequest) {
 
     if (!fullName || !dob || !phone || !gender) {
       return NextResponse.json({ error: 'Full name, date of birth, phone, and gender are required' }, { status: 400 });
+    }
+
+    const emailClean = email ? email.toLowerCase().trim() : '';
+    const phoneClean = phone.trim();
+    const phoneDigits = phoneClean.replace(/\D/g, '');
+
+    // Check duplicate email or phone in global store
+    const globalPatients = getGlobalPatients();
+    const existingPatient = globalPatients.find(p => {
+      if (emailClean && (p.email?.toLowerCase().trim() === emailClean || p.user?.email?.toLowerCase().trim() === emailClean)) return true;
+      if (p.phone) {
+        const pDigits = p.phone.replace(/\D/g, '');
+        if (phoneDigits.length >= 7 && pDigits.length >= 7 && (pDigits.endsWith(phoneDigits) || phoneDigits.endsWith(pDigits))) return true;
+        if (p.phone.trim() === phoneClean) return true;
+      }
+      return false;
+    });
+
+    if (existingPatient) {
+      return NextResponse.json({
+        error: 'A patient with this email address or phone number is already registered in the system.'
+      }, { status: 400 });
     }
 
     // Determine target hospital ID
@@ -286,5 +308,47 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ message: `Patient account ${status.toLowerCase()} successfully` });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to update status' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const user = getUserFromRequest(req);
+    if (!user || (user.role !== 'SUPER_ADMIN' && user.role !== 'HOSPITAL_ADMIN')) {
+      return NextResponse.json({ error: 'Only Administrators can permanently delete patient records' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const patientId = searchParams.get('id') || searchParams.get('patientId');
+
+    if (!patientId) {
+      return NextResponse.json({ error: 'Patient ID is required for permanent deletion' }, { status: 400 });
+    }
+
+    deleteGlobalPatientInMemory(patientId);
+
+    try {
+      const patient = await prisma.patient.findFirst({
+        where: {
+          OR: [
+            { id: patientId },
+            { patientCode: patientId }
+          ]
+        }
+      });
+
+      if (patient) {
+        await prisma.patient.delete({ where: { id: patient.id } });
+        if (patient.userId) {
+          await prisma.user.delete({ where: { id: patient.userId } });
+        }
+      }
+    } catch (dbErr: any) {
+      console.warn('Prisma DB permanent delete fallback:', dbErr.message);
+    }
+
+    return NextResponse.json({ message: 'Patient record permanently deleted successfully' });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Failed to delete patient record' }, { status: 500 });
   }
 }
