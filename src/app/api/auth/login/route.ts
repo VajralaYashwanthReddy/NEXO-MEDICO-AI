@@ -69,7 +69,12 @@ export async function POST(req: NextRequest) {
       name: sanitizedName,
       role: user.role,
       hospitalId: user.hospitalId,
-      departmentId: user.departmentId
+      departmentId: user.departmentId,
+      patientCode: user.patientProfile?.patientCode,
+      gender: user.patientProfile?.gender,
+      dob: user.patientProfile?.dob,
+      phone: user.patientProfile?.phone,
+      bloodGroup: user.patientProfile?.bloodGroup
     };
 
     const token = signJwtToken(payload);
@@ -195,7 +200,12 @@ export async function POST(req: NextRequest) {
       name: fallbackUser.name,
       role: fallbackUser.role,
       hospitalId: fallbackUser.hospitalId,
-      departmentId: null
+      departmentId: null,
+      patientCode: fallbackUser.patientCode,
+      gender: fallbackUser.gender,
+      dob: fallbackUser.dob,
+      phone: fallbackUser.phone,
+      bloodGroup: fallbackUser.bloodGroup
     };
 
     const token = signJwtToken(payload);

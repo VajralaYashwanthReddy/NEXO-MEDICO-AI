@@ -11,6 +11,11 @@ export interface UserPayload {
   role: string;
   hospitalId: string | null;
   departmentId?: string | null;
+  patientCode?: string | null;
+  gender?: string | null;
+  dob?: string | null;
+  phone?: string | null;
+  bloodGroup?: string | null;
 }
 
 export async function hashPassword(password: string): Promise<string> {

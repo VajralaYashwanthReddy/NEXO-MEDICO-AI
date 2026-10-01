@@ -83,6 +83,11 @@ export default function PatientSelfRegistrationPage() {
         email: data.user.email,
         name: data.user.name,
         role: data.user.role,
+        patientCode: data.user.patientCode || data.patientCode || data.patient?.patientCode,
+        gender: data.user.gender || data.patient?.gender || formData.gender,
+        dob: data.user.dob || data.patient?.dob || formData.dob,
+        phone: data.user.phone || data.patient?.phone || formData.phone,
+        bloodGroup: data.user.bloodGroup || data.patient?.bloodGroup || formData.bloodGroup,
         hospitalId: data.user.hospitalId,
         hospitalName: data.user.hospitalName,
         permissions: ['PATIENT_VIEW', 'MEDICAL_RECORD_VIEW', 'PRESCRIPTION_VIEW', 'LAB_REPORT_VIEW']

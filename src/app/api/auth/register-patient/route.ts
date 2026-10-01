@@ -131,7 +131,12 @@ export async function POST(req: NextRequest) {
       email: user.email,
       name: user.name,
       role: user.role,
-      hospitalId: user.hospitalId
+      hospitalId: user.hospitalId,
+      patientCode: patient.patientCode,
+      gender: patient.gender,
+      dob: patient.dob,
+      phone: patient.phone,
+      bloodGroup: patient.bloodGroup
     });
 
     const response = NextResponse.json({
@@ -143,6 +148,10 @@ export async function POST(req: NextRequest) {
         name: user.name,
         role: user.role,
         patientCode: patient.patientCode,
+        gender: patient.gender,
+        dob: patient.dob,
+        phone: patient.phone,
+        bloodGroup: patient.bloodGroup,
         hospitalId: user.hospitalId,
         hospitalName: defaultHospital.name
       },
@@ -173,6 +182,10 @@ export async function POST(req: NextRequest) {
       name: fullName,
       role: 'PATIENT',
       patientCode: mockPatientCode,
+      gender,
+      dob,
+      phone,
+      bloodGroup,
       hospitalId: mockHospitalId,
       hospitalName: 'Metropolitan General Hospital'
     };
@@ -211,7 +224,12 @@ export async function POST(req: NextRequest) {
       email: mockUser.email,
       name: mockUser.name,
       role: mockUser.role,
-      hospitalId: mockUser.hospitalId
+      hospitalId: mockUser.hospitalId,
+      patientCode: mockPatientCode,
+      gender,
+      dob,
+      phone,
+      bloodGroup
     });
 
     const response = NextResponse.json({

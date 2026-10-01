@@ -74,35 +74,54 @@ export default function PatientDashboard() {
     fetch('/api/patients?global=true')
       .then(r => r.json())
       .then(d => {
-        if (d.patients && Array.isArray(d.patients)) {
-          const userEmailLower = user?.email?.toLowerCase();
-          const target = d.patients.find((p: any) =>
-            (userEmailLower && p.email?.toLowerCase() === userEmailLower) ||
-            (userEmailLower && p.user?.email?.toLowerCase() === userEmailLower) ||
-            (p.userId && p.userId === user?.id) ||
-            (user?.patientCode && p.patientCode === user.patientCode)
-          );
+        const localSavedStr = typeof window !== 'undefined' ? localStorage.getItem('nexo_custom_registered_patients') : null;
+        let localPatients: any[] = [];
+        if (localSavedStr) {
+          try { localPatients = JSON.parse(localSavedStr); } catch (e) {}
+        }
 
-          if (target) {
-            fetch(`/api/patients/${target.id}/timeline`)
-              .then(r => r.json())
-              .then(t => setPatientTimeline(t.patientTimeline))
-              .catch(() => setPatientTimeline(target));
-          } else {
-            setPatientTimeline({
-              id: user?.id || 'pat-user-01',
-              fullName: user?.name || 'Registered Patient',
-              email: user?.email || '',
-              gender: user?.gender || 'N/A',
-              dob: user?.dob || 'N/A',
-              phone: user?.phone || 'N/A',
-              bloodGroup: user?.bloodGroup || 'N/A',
-              patientCode: user?.patientCode || 'N/A'
-            });
-          }
+        const serverPatients = (d.patients && Array.isArray(d.patients)) ? d.patients : [];
+        const allPatients = [...serverPatients, ...localPatients];
+
+        const userEmailLower = user?.email?.toLowerCase();
+        const target = allPatients.find((p: any) =>
+          (userEmailLower && p.email?.toLowerCase() === userEmailLower) ||
+          (userEmailLower && p.user?.email?.toLowerCase() === userEmailLower) ||
+          (p.userId && p.userId === user?.id) ||
+          (user?.patientCode && p.patientCode === user.patientCode)
+        );
+
+        if (target) {
+          fetch(`/api/patients/${target.id}/timeline`)
+            .then(r => r.json())
+            .then(t => setPatientTimeline({ ...target, ...(t.patientTimeline || {}) }))
+            .catch(() => setPatientTimeline(target));
+        } else {
+          setPatientTimeline({
+            id: user?.id || 'pat-user-01',
+            fullName: user?.name || 'Registered Patient',
+            email: user?.email || '',
+            gender: user?.gender || 'N/A',
+            dob: user?.dob || 'N/A',
+            phone: user?.phone || 'N/A',
+            bloodGroup: user?.bloodGroup || 'N/A',
+            patientCode: user?.patientCode || 'N/A'
+          });
         }
       })
-      .catch(err => console.error(err))
+      .catch(err => {
+        console.error(err);
+        setPatientTimeline({
+          id: user?.id || 'pat-user-01',
+          fullName: user?.name || 'Registered Patient',
+          email: user?.email || '',
+          gender: user?.gender || 'N/A',
+          dob: user?.dob || 'N/A',
+          phone: user?.phone || 'N/A',
+          bloodGroup: user?.bloodGroup || 'N/A',
+          patientCode: user?.patientCode || 'N/A'
+        });
+      })
       .finally(() => setLoadingTimeline(false));
   };
 
