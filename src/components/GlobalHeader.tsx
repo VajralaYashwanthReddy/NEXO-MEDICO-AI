@@ -31,6 +31,13 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
   // Edit Profile Form State
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editGender, setEditGender] = useState('Male');
+  const [editDob, setEditDob] = useState('1995-01-01');
+  const [editPhone, setEditPhone] = useState('');
+  const [editBloodGroup, setEditBloodGroup] = useState('O+');
+  const [editEmergencyContact, setEditEmergencyContact] = useState('');
+  const [editAllergies, setEditAllergies] = useState('');
+  const [editConditions, setEditConditions] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSuccessMsg, setProfileSuccessMsg] = useState('');
   const [profileErrorMsg, setProfileErrorMsg] = useState('');
@@ -76,6 +83,13 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
     if (user) {
       setEditName(user.name || '');
       setEditEmail(user.email || '');
+      setEditGender((user as any).gender || 'Male');
+      setEditDob((user as any).dob || '1995-01-01');
+      setEditPhone((user as any).phone || '');
+      setEditBloodGroup((user as any).bloodGroup || 'O+');
+      setEditEmergencyContact((user as any).emergencyContact || '');
+      setEditAllergies((user as any).allergies || '');
+      setEditConditions((user as any).conditions || '');
     }
     setProfileSuccessMsg('');
     setProfileErrorMsg('');
@@ -107,14 +121,54 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
           'Content-Type': 'application/json',
           ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
         },
-        body: JSON.stringify({ name: editName, email: editEmail })
+        body: JSON.stringify({
+          name: editName,
+          email: editEmail,
+          gender: editGender,
+          dob: editDob,
+          phone: editPhone,
+          bloodGroup: editBloodGroup,
+          emergencyContact: editEmergencyContact,
+          allergies: editAllergies,
+          conditions: editConditions
+        })
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update profile');
 
-      updateUser({ name: data.user.name, email: data.user.email }, data.token);
-      setProfileSuccessMsg('Profile details updated successfully!');
+      updateUser({
+        name: data.user.name,
+        email: data.user.email,
+        gender: data.user.gender,
+        dob: data.user.dob,
+        phone: data.user.phone,
+        bloodGroup: data.user.bloodGroup,
+        patientCode: data.user.patientCode
+      }, data.token);
+
+      if (typeof window !== 'undefined') {
+        try {
+          const localSaved = JSON.parse(localStorage.getItem('nexo_custom_registered_patients') || '[]');
+          const updated = localSaved.map((p: any) => {
+            if (p.email?.toLowerCase() === data.user.email?.toLowerCase() || p.patientCode === data.user.patientCode) {
+              return {
+                ...p,
+                fullName: data.user.name,
+                email: data.user.email,
+                gender: data.user.gender,
+                dob: data.user.dob,
+                phone: data.user.phone,
+                bloodGroup: data.user.bloodGroup
+              };
+            }
+            return p;
+          });
+          localStorage.setItem('nexo_custom_registered_patients', JSON.stringify(updated));
+        } catch (e) {}
+      }
+
+      setProfileSuccessMsg('All profile details updated successfully!');
       setTimeout(() => setShowEditModal(false), 1200);
     } catch (err: any) {
       setProfileErrorMsg(err.message);
@@ -350,11 +404,11 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
       {/* EDIT PROFILE MODAL */}
       {showEditModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border text-xs space-y-4 animate-in fade-in select-none text-slate-900">
-            <div className="flex items-center justify-between border-b pb-3">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border text-xs space-y-4 animate-in fade-in select-none text-slate-900">
+            <div className="flex items-center justify-between border-b pb-3 sticky top-0 bg-white z-10">
               <div className="flex items-center gap-2">
                 <Edit3 className="w-5 h-5 text-cyan-600" />
-                <h3 className="font-extrabold text-slate-900 text-base">Edit Account Profile</h3>
+                <h3 className="font-extrabold text-slate-900 text-base">Edit Account Profile & Demographics</h3>
               </div>
               <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">
                 <X className="w-5 h-5" />
@@ -375,26 +429,119 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
             )}
 
             <form onSubmit={handleSaveProfile} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-extrabold text-slate-900 block text-xs mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Enter full name"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-extrabold text-slate-900 block text-xs mb-1">Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="user@nexomedico.ai"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-extrabold text-slate-900 block text-xs mb-1">Gender *</label>
+                  <select
+                    value={editGender}
+                    onChange={(e) => setEditGender(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-extrabold text-slate-900 block text-xs mb-1">Date of Birth *</label>
+                  <input
+                    type="date"
+                    required
+                    value={editDob}
+                    onChange={(e) => setEditDob(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-extrabold text-slate-900 block text-xs mb-1">Phone Number *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    placeholder="+1 (555) 012-3456"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-extrabold text-slate-900 block text-xs mb-1">Blood Group</label>
+                  <select
+                    value={editBloodGroup}
+                    onChange={(e) => setEditBloodGroup(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                  >
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label className="font-extrabold text-slate-900 block text-xs mb-1">Full Name *</label>
+                <label className="font-extrabold text-slate-900 block text-xs mb-1">Emergency Contact</label>
                 <input
                   type="text"
-                  required
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Enter full name"
+                  value={editEmergencyContact}
+                  onChange={(e) => setEditEmergencyContact(e.target.value)}
+                  placeholder="Spouse / Relative - Phone"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="font-extrabold text-slate-900 block text-xs mb-1">Email Address *</label>
+                <label className="font-extrabold text-slate-900 block text-xs mb-1">Known Allergies</label>
                 <input
-                  type="email"
-                  required
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder="user@nexomedico.ai"
+                  type="text"
+                  value={editAllergies}
+                  onChange={(e) => setEditAllergies(e.target.value)}
+                  placeholder="e.g. Penicillin, Sulfa, Peanuts"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-rose-600 focus:bg-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="font-extrabold text-slate-900 block text-xs mb-1">Pre-existing Medical Conditions</label>
+                <input
+                  type="text"
+                  value={editConditions}
+                  onChange={(e) => setEditConditions(e.target.value)}
+                  placeholder="e.g. Type 2 Diabetes, Hypertension, Asthma"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-cyan-500 focus:outline-none"
                 />
               </div>
@@ -410,7 +557,7 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
                 <button
                   type="submit"
                   disabled={savingProfile}
-                  className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                  className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" /> {savingProfile ? 'Saving Changes...' : 'Save Profile Details'}
                 </button>

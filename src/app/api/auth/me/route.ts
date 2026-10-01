@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest, comparePasswords, hashPassword, signJwtToken, formatNameFromEmail } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { createAuditLog } from '@/lib/audit';
-import { getGlobalPatients } from '@/lib/patientStore';
+import { getGlobalPatients, addGlobalPatient } from '@/lib/patientStore';
 
 export async function GET(req: NextRequest) {
   try {
@@ -129,13 +129,27 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { name, email, currentPassword, newPassword } = body;
+    const {
+      name,
+      email,
+      currentPassword,
+      newPassword,
+      dob,
+      gender,
+      phone,
+      bloodGroup,
+      address,
+      emergencyContact,
+      allergies,
+      conditions
+    } = body;
 
     let updatedUser: any = null;
 
     try {
       const dbUser = await prisma.user.findUnique({
-        where: { id: userPayload.id }
+        where: { id: userPayload.id },
+        include: { patientProfile: true }
       });
 
       if (dbUser) {
@@ -158,6 +172,30 @@ export async function PUT(req: NextRequest) {
           data: dataToUpdate,
           include: { hospital: true }
         });
+
+        if (dbUser.role === 'PATIENT' || dbUser.patientProfile) {
+          const freshNameVal = name ? name.trim() : dbUser.name;
+          const freshEmailVal = email ? email.toLowerCase().trim() : dbUser.email;
+          const patData: any = {
+            fullName: freshNameVal,
+            email: freshEmailVal
+          };
+          if (dob) patData.dob = dob;
+          if (gender) patData.gender = gender;
+          if (phone) patData.phone = phone;
+          if (bloodGroup) patData.bloodGroup = bloodGroup;
+          if (address) patData.address = address;
+          if (emergencyContact) patData.emergencyContact = emergencyContact;
+          if (allergies !== undefined) patData.allergies = allergies;
+          if (conditions !== undefined) patData.conditions = conditions;
+
+          if (dbUser.patientProfile) {
+            await prisma.patient.update({
+              where: { id: dbUser.patientProfile.id },
+              data: patData
+            });
+          }
+        }
       }
     } catch (e: any) {
       console.warn('Prisma user update warning in /api/auth/me PUT:', e.message);
@@ -165,6 +203,21 @@ export async function PUT(req: NextRequest) {
 
     const freshName = name ? name.trim() : (updatedUser?.name || userPayload.name);
     const freshEmail = email ? email.toLowerCase().trim() : (updatedUser?.email || userPayload.email);
+
+    const storePatient = addGlobalPatient({
+      userId: userPayload.id,
+      patientCode: (userPayload as any).patientCode,
+      fullName: freshName,
+      email: freshEmail,
+      ...(dob ? { dob } : {}),
+      ...(gender ? { gender } : {}),
+      ...(phone ? { phone } : {}),
+      ...(bloodGroup ? { bloodGroup } : {}),
+      ...(address ? { address } : {}),
+      ...(emergencyContact ? { emergencyContact } : {}),
+      ...(allergies !== undefined ? { allergies } : {}),
+      ...(conditions !== undefined ? { conditions } : {})
+    });
 
     const freshUserObj = {
       id: userPayload.id,
@@ -174,6 +227,11 @@ export async function PUT(req: NextRequest) {
       hospitalId: userPayload.hospitalId,
       hospitalName: updatedUser?.hospital?.name || (userPayload as any).hospitalName || 'Metropolitan General Hospital',
       departmentId: userPayload.departmentId,
+      patientCode: storePatient.patientCode || (userPayload as any).patientCode,
+      gender: storePatient.gender || gender || (userPayload as any).gender,
+      dob: storePatient.dob || dob || (userPayload as any).dob,
+      phone: storePatient.phone || phone || (userPayload as any).phone,
+      bloodGroup: storePatient.bloodGroup || bloodGroup || (userPayload as any).bloodGroup,
       permissions: ['*']
     };
 
@@ -182,7 +240,12 @@ export async function PUT(req: NextRequest) {
       email: freshUserObj.email,
       name: freshUserObj.name,
       role: freshUserObj.role,
-      hospitalId: freshUserObj.hospitalId
+      hospitalId: freshUserObj.hospitalId,
+      patientCode: freshUserObj.patientCode,
+      gender: freshUserObj.gender,
+      dob: freshUserObj.dob,
+      phone: freshUserObj.phone,
+      bloodGroup: freshUserObj.bloodGroup
     });
 
     try {
