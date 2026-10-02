@@ -189,9 +189,13 @@ export function addGlobalPatient(newPatient: Partial<GlobalPatient>): GlobalPati
     if (newPatient.userId) {
       existing.userId = newPatient.userId;
     }
+    if (newPatient.user) {
+      existing.user = { ...(existing.user || { id: `usr-${Date.now()}`, email: existing.email, status: 'ACTIVE' }), ...newPatient.user };
+    }
 
-    allTimePatientsMap.set(existing.patientCode || existing.id, existing);
-    saveTempCache(Array.from(allTimePatientsMap.values()));
+    if (existing.patientCode) allTimePatientsMap.set(existing.patientCode, existing);
+    if (existing.id) allTimePatientsMap.set(existing.id, existing);
+    saveTempCache(Array.from(new Set(allTimePatientsMap.values())));
     return existing;
   }
 
@@ -228,24 +232,28 @@ export function addGlobalPatient(newPatient: Partial<GlobalPatient>): GlobalPati
     user: newPatient.user || { id: `usr-${Date.now()}`, email: newPatient.email || `${patientCode.toLowerCase()}@patient.nexomedico.ai`, status: 'ACTIVE' }
   };
 
-  allTimePatientsMap.set(created.patientCode, created);
-  
-  const updatedList = Array.from(allTimePatientsMap.values());
+  if (created.patientCode) allTimePatientsMap.set(created.patientCode, created);
+  if (created.id) allTimePatientsMap.set(created.id, created);
+
+  const updatedList = Array.from(new Set(allTimePatientsMap.values()));
   saveTempCache(updatedList);
   return created;
 }
 
 export function togglePatientStatusInMemory(patientId: string, newStatus: string): boolean {
   const current = loadTempCache();
-  const target = current.find(p => p.id === patientId || p.patientCode === patientId);
+  const target = current.find(p => p.id === patientId || p.patientCode === patientId || p.email?.toLowerCase() === patientId.toLowerCase());
   if (target) {
     if (!target.user) {
       target.user = { id: `usr-${Date.now()}`, email: target.email, status: newStatus };
     } else {
       target.user.status = newStatus;
     }
-    allTimePatientsMap.set(target.patientCode || target.id, target);
-    saveTempCache(Array.from(allTimePatientsMap.values()));
+    if (target.patientCode) allTimePatientsMap.set(target.patientCode, target);
+    if (target.id) allTimePatientsMap.set(target.id, target);
+
+    const updatedList = Array.from(new Set(allTimePatientsMap.values()));
+    saveTempCache(updatedList);
     return true;
   }
   return false;

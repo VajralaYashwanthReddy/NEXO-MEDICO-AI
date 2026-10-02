@@ -105,12 +105,15 @@ export default function PatientsManagementPage() {
         if (data.patients && Array.isArray(data.patients)) {
           setPatients(prev => {
             const mergedMap = new Map();
-            // 1. Base from localStorage
-            localSaved.forEach((p: any) => { if (p && (p.patientCode || p.id)) mergedMap.set(p.patientCode || p.id, p); });
-            // 2. Base from previous component state
-            prev.forEach((p: any) => { if (p && (p.patientCode || p.id)) mergedMap.set(p.patientCode || p.id, p); });
-            // 3. Incoming server patients are authoritative
+            // 1. Incoming server patients are primary and authoritative
             data.patients.forEach((p: any) => { if (p && (p.patientCode || p.id)) mergedMap.set(p.patientCode || p.id, p); });
+            // 2. Include any locally saved custom patients not present on server
+            localSaved.forEach((p: any) => {
+              const key = p?.patientCode || p?.id;
+              if (key && !mergedMap.has(key)) {
+                mergedMap.set(key, p);
+              }
+            });
 
             const mergedList = Array.from(mergedMap.values());
             if (typeof window !== 'undefined') {

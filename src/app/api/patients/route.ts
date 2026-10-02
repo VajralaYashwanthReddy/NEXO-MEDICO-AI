@@ -82,14 +82,24 @@ export async function GET(req: NextRequest) {
     });
 
     const combinedMap = new Map();
-    dbPatients.forEach(p => combinedMap.set(p.patientCode || p.id, p));
+    dbPatients.forEach(p => {
+      combinedMap.set(p.id, p);
+      if (p.patientCode) combinedMap.set(p.patientCode, p);
+    });
+
     fallbackPatients.forEach(p => {
-      if (!combinedMap.has(p.patientCode) && !combinedMap.has(p.id)) {
-        combinedMap.set(p.patientCode || p.id, p);
+      const existing = combinedMap.get(p.id) || combinedMap.get(p.patientCode);
+      if (!existing) {
+        combinedMap.set(p.id, p);
+        if (p.patientCode) combinedMap.set(p.patientCode, p);
+      } else {
+        if (p.user?.status && existing.user) {
+          existing.user.status = p.user.status;
+        }
       }
     });
 
-    const combinedPatients = Array.from(combinedMap.values());
+    const combinedPatients = Array.from(new Set(combinedMap.values()));
 
     return NextResponse.json({ patients: combinedPatients, isGlobalSearch: isGlobal });
   } catch (err: any) {
@@ -304,6 +314,10 @@ export async function PUT(req: NextRequest) {
     } catch (dbErr: any) {
       console.warn('Prisma DB status update fallback:', dbErr.message);
     }
+
+    try {
+      eventBroadcaster.broadcast('PATIENT_REGISTERED', { patientId, status });
+    } catch (e) {}
 
     return NextResponse.json({ message: `Patient account ${status.toLowerCase()} successfully` });
   } catch (err: any) {
