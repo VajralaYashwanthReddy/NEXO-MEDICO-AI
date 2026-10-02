@@ -73,7 +73,7 @@ export default function HospitalRegisterWizard() {
       return;
     }
 
-    setShowOtpModal(true);
+    handleOtpSuccess();
   };
 
   const handleOtpSuccess = async () => {
