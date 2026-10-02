@@ -88,16 +88,42 @@ export default function AdminHospitalsPage() {
   const fetchHospitals = (q = search, showSpinner = true) => {
     if (showSpinner) setLoading(true);
     const jwt = token || (typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : '');
-    fetch(`/api/admin/hospitals?q=${encodeURIComponent(q)}`, {
-      headers: jwt ? { Authorization: `Bearer ${jwt}` } : {}
-    })
+    const localSaved = typeof window !== 'undefined'
+      ? JSON.parse(localStorage.getItem('nexo_custom_registered_hospitals') || '[]')
+      : [];
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+    if (localSaved.length > 0) {
+      try {
+        headers['x-client-hospitals'] = encodeURIComponent(JSON.stringify(localSaved));
+      } catch (e) {}
+    }
+
+    fetch(`/api/admin/hospitals?q=${encodeURIComponent(q)}`, { headers })
       .then(res => res.json())
       .then(data => {
-        const list = data.hospitals || [];
-        setHospitals(list);
+        const serverList = data.hospitals || [];
+        const mergedMap = new Map();
+        serverList.forEach((h: any) => { if (h && (h.id || h.registrationNo)) mergedMap.set(h.id || h.registrationNo, h); });
+        localSaved.forEach((h: any) => {
+          const key = h?.id || h?.registrationNo;
+          if (key && !mergedMap.has(key)) {
+            mergedMap.set(key, h);
+          }
+        });
+
+        const mergedList = Array.from(mergedMap.values());
+        setHospitals(mergedList);
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('nexo_custom_registered_hospitals', JSON.stringify(mergedList));
+        }
 
         if (user) {
-          const found = list.find((h: any) => h.id === user.hospitalId) || list[0];
+          const found = mergedList.find((h: any) => h.id === user.hospitalId) || mergedList[0];
           if (found) {
             setMyHospital(found);
             setProfileForm({

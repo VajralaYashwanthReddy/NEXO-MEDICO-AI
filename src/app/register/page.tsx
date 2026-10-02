@@ -10,22 +10,22 @@ import { VisualCaptcha, MockOtpModal } from '@/components/SecurityVerification';
 export default function HospitalRegisterWizard() {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
-    hospitalName: 'St. Jude Memorial Hospital',
+    hospitalName: '',
     hospitalType: 'Multi-Specialty Research Hospital',
     registrationNo: `REG-2026-${Math.floor(10000 + Math.random() * 90000)}`,
-    email: 'contact@stjudehospital.org',
-    phone: '+1 (555) 019-2831',
-    address: '742 Healthcare Boulevard, Medical District',
-    city: 'Metropolis',
-    state: 'NY',
+    email: '',
+    phone: '',
+    address: '',
+    city: '',
+    state: '',
     country: 'USA',
-    website: 'https://stjudehospital.org',
-    emergencyContact: '+1 (555) 911-0000',
+    website: '',
+    emergencyContact: '',
     numberDepartments: '5',
     numberBeds: '50',
-    adminName: 'Dr. Arthur Vance',
-    adminEmail: 'admin@stjudehospital.org',
-    adminPassword: 'password123'
+    adminName: '',
+    adminEmail: '',
+    adminPassword: ''
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -73,7 +73,7 @@ export default function HospitalRegisterWizard() {
       return;
     }
 
-    handleOtpSuccess();
+    setShowOtpModal(true);
   };
 
   const handleOtpSuccess = async () => {
@@ -104,9 +104,13 @@ export default function HospitalRegisterWizard() {
         permissions: ['*']
       });
 
-      if (typeof window !== 'undefined' && hospital.id) {
-        localStorage.setItem('nexo_active_hospital', hospital.id);
+      if (typeof window !== 'undefined' && hospital) {
+        localStorage.setItem('nexo_active_hospital', hospital.id || 'hosp-01');
         localStorage.setItem('nexo_active_hospital_name', hospital.name || formData.hospitalName);
+
+        const localSaved = JSON.parse(localStorage.getItem('nexo_custom_registered_hospitals') || '[]');
+        const updated = [hospital, ...localSaved.filter((h: any) => h.id !== hospital.id && h.registrationNo !== hospital.registrationNo)];
+        localStorage.setItem('nexo_custom_registered_hospitals', JSON.stringify(updated));
       }
 
       router.push('/admin/dashboard');

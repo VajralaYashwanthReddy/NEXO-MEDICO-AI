@@ -41,6 +41,20 @@ export async function GET(req: NextRequest) {
     console.warn('Prisma DB query skipped in /api/admin/hospitals, serving global store:', err.message);
   }
 
+  const clientHospitalsHeader = req.headers.get('x-client-hospitals');
+  if (clientHospitalsHeader) {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(clientHospitalsHeader));
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        parsed.forEach(h => {
+          if (h && (h.id || h.registrationNo)) {
+            addGlobalHospital(h);
+          }
+        });
+      }
+    } catch (e) {}
+  }
+
   // Merge store hospitals with DB hospitals to guarantee zero empty states
   const storeHospitals = getGlobalHospitals();
   const mergedMap = new Map<string, any>();
