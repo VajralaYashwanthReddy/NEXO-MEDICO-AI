@@ -23,7 +23,37 @@ export async function GET(req: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      const getFirstValid = (...vals: (string | null | undefined)[]) => {
+        for (const v of vals) {
+          if (v && v !== 'N/A' && v.trim() !== '') return v;
+        }
+        return null;
+      };
+
+      const globalPatients = getGlobalPatients();
+      const pMatch = globalPatients.find(p => p.userId === userPayload.id || p.id === userPayload.id || p.patientCode === (userPayload as any).patientCode || p.email?.toLowerCase() === userPayload.email?.toLowerCase());
+
+      const sanitizedName = (userPayload.name && userPayload.name !== 'Patient Account' && userPayload.name !== 'Registered Patient')
+        ? userPayload.name
+        : formatNameFromEmail(userPayload.email);
+
+      return NextResponse.json({
+        user: {
+          id: userPayload.id,
+          email: userPayload.email,
+          name: sanitizedName,
+          role: userPayload.role,
+          hospitalId: userPayload.hospitalId,
+          hospitalName: (userPayload as any).hospitalName || (userPayload.role === 'SUPER_ADMIN' ? 'All Platform Tenants' : 'Hospital Organization'),
+          departmentId: userPayload.departmentId || null,
+          patientCode: getFirstValid((userPayload as any).patientCode, pMatch?.patientCode),
+          gender: getFirstValid((userPayload as any).gender, pMatch?.gender),
+          dob: getFirstValid((userPayload as any).dob, pMatch?.dob),
+          phone: getFirstValid((userPayload as any).phone, pMatch?.phone),
+          bloodGroup: getFirstValid((userPayload as any).bloodGroup, pMatch?.bloodGroup),
+          permissions: ['*']
+        }
+      });
     }
 
     if (user.status === 'SUSPENDED') {

@@ -48,13 +48,23 @@ export default function HospitalRegisterWizard() {
     setError('');
     setCaptchaError('');
 
+    if (step === 1 && (!formData.hospitalName || !formData.registrationNo || !formData.email || !formData.phone)) {
+      setError('Please fill in all required Step 1 hospital fields (Legal Name, Registration No, Email, Phone).');
+      return;
+    }
+
+    if (step === 2 && (!formData.address || !formData.emergencyContact)) {
+      setError('Please fill in required Step 2 location fields (Address, 24/7 Emergency Line).');
+      return;
+    }
+
     if (step < 4) {
       setStep(step + 1);
       return;
     }
 
     if (!formData.adminName || !formData.adminEmail || !formData.adminPassword) {
-      setError('Please fill out all required admin account fields.');
+      setError('Please fill out all required admin account fields (Name, Email, Password).');
       return;
     }
 
