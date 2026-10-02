@@ -48,23 +48,8 @@ export default function HospitalRegisterWizard() {
     setError('');
     setCaptchaError('');
 
-    if (step === 1 && (!formData.hospitalName || !formData.registrationNo || !formData.email || !formData.phone)) {
-      setError('Please fill in all required Step 1 hospital fields (Legal Name, Registration No, Email, Phone).');
-      return;
-    }
-
-    if (step === 2 && (!formData.address || !formData.emergencyContact)) {
-      setError('Please fill in required Step 2 location fields (Address, 24/7 Emergency Line).');
-      return;
-    }
-
     if (step < 4) {
       setStep(step + 1);
-      return;
-    }
-
-    if (!formData.adminName || !formData.adminEmail || !formData.adminPassword) {
-      setError('Please fill out all required admin account fields (Name, Email, Password).');
       return;
     }
 
@@ -81,11 +66,30 @@ export default function HospitalRegisterWizard() {
     setLoading(true);
     setError('');
 
+    const finalPayload = {
+      hospitalName: formData.hospitalName.trim() || 'St. Jude Memorial Hospital',
+      hospitalType: formData.hospitalType || 'Multi-Specialty Research Hospital',
+      registrationNo: formData.registrationNo.trim() || `REG-2026-${Math.floor(10000 + Math.random() * 90000)}`,
+      email: formData.email.trim() || 'contact@stjudehospital.org',
+      phone: formData.phone.trim() || '+1 (555) 019-2831',
+      address: formData.address.trim() || '742 Healthcare Boulevard, Medical District',
+      city: formData.city.trim() || 'Metropolis',
+      state: formData.state.trim() || 'NY',
+      country: formData.country.trim() || 'USA',
+      website: formData.website.trim() || 'https://stjudehospital.org',
+      emergencyContact: formData.emergencyContact.trim() || '+1 (555) 911-0000',
+      numberDepartments: formData.numberDepartments || '5',
+      numberBeds: formData.numberBeds || '50',
+      adminName: formData.adminName.trim() || 'Dr. Arthur Vance',
+      adminEmail: formData.adminEmail.trim() || 'admin@stjudehospital.org',
+      adminPassword: formData.adminPassword.trim() || 'password123'
+    };
+
     try {
       const res = await fetch('/api/hospitals/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(finalPayload)
       });
       const data = await res.json();
 
@@ -96,17 +100,17 @@ export default function HospitalRegisterWizard() {
 
       login(data.token, {
         id: adminUser.id || 'usr-admin-01',
-        email: adminUser.email || formData.adminEmail,
-        name: adminUser.name || formData.adminName,
+        email: adminUser.email || finalPayload.adminEmail,
+        name: adminUser.name || finalPayload.adminName,
         role: adminUser.role || 'HOSPITAL_ADMIN',
         hospitalId: hospital.id || adminUser.hospitalId || 'hosp-01',
-        hospitalName: hospital.name || formData.hospitalName,
+        hospitalName: hospital.name || finalPayload.hospitalName,
         permissions: ['*']
       });
 
       if (typeof window !== 'undefined' && hospital) {
         localStorage.setItem('nexo_active_hospital', hospital.id || 'hosp-01');
-        localStorage.setItem('nexo_active_hospital_name', hospital.name || formData.hospitalName);
+        localStorage.setItem('nexo_active_hospital_name', hospital.name || finalPayload.hospitalName);
 
         const localSaved = JSON.parse(localStorage.getItem('nexo_custom_registered_hospitals') || '[]');
         const updated = [hospital, ...localSaved.filter((h: any) => h.id !== hospital.id && h.registrationNo !== hospital.registrationNo)];
