@@ -30,7 +30,8 @@ import {
   Mail,
   MapPin,
   Save,
-  Check
+  Check,
+  Trash2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -122,13 +123,18 @@ export default function AdminHospitalsPage() {
   useEffect(() => {
     fetchHospitals(search, true);
 
+    const pollInterval = setInterval(() => {
+      fetchHospitals(search, false);
+    }, 5000);
+
     let eventSource: EventSource | null = null;
     try {
       eventSource = new EventSource('/api/events');
       eventSource.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
-          if (data.type === 'HOSPITAL_REGISTERED' || data.type === 'HOSPITAL_STATUS_UPDATED') {
+          const evType = data.event || data.type;
+          if (evType === 'HOSPITAL_REGISTERED' || evType === 'HOSPITAL_STATUS_UPDATED' || evType === 'HOSPITAL_DELETED') {
             fetchHospitals(search, false);
           }
         } catch (err) {
@@ -139,8 +145,15 @@ export default function AdminHospitalsPage() {
       // EventSource fallback
     }
 
+    const handleFocus = () => {
+      fetchHospitals(search, false);
+    };
+    window.addEventListener('focus', handleFocus);
+
     return () => {
+      clearInterval(pollInterval);
       if (eventSource) eventSource.close();
+      window.removeEventListener('focus', handleFocus);
     };
   }, [search]);
 
@@ -222,11 +235,35 @@ export default function AdminHospitalsPage() {
         const data = await res.json();
         alert(data.error || 'Failed to update hospital status');
       } else {
-        fetchHospitals(search);
+        fetchHospitals(search, false);
       }
     } catch (err) {
       setHospitals(prev => prev.map(h => h.id === hospitalId ? { ...h, status: currentStatus } : h));
       console.error(err);
+    }
+  };
+
+  const handleDeleteHospital = async (hospitalId: string, hospitalName: string) => {
+    if (!confirm(`Are you sure you want to permanently delete hospital tenant "${hospitalName}"? This action cannot be undone.`)) {
+      return;
+    }
+    setHospitals(prev => prev.filter(h => h.id !== hospitalId && h.registrationNo !== hospitalId));
+
+    try {
+      const res = await fetch(`/api/admin/hospitals?hospitalId=${encodeURIComponent(hospitalId)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete hospital tenant');
+        fetchHospitals(search, false);
+      } else {
+        fetchHospitals(search, false);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error deleting hospital tenant');
     }
   };
 
@@ -613,6 +650,13 @@ export default function AdminHospitalsPage() {
                         }`}
                       >
                         {h.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteHospital(h.id, h.name)}
+                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[11px] rounded-lg transition-all inline-flex items-center gap-1 shadow-xs"
+                        title="Permanently Delete Hospital Tenant"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
                       </button>
                     </td>
                   </tr>

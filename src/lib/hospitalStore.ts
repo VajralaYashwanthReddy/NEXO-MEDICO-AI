@@ -225,3 +225,29 @@ export function updateGlobalHospitalStatus(hospitalId: string, status: string): 
   }
   return null;
 }
+
+export function deleteGlobalHospitalInMemory(hospitalId: string): boolean {
+  const current = loadTempCache();
+  const target = current.find(h => h.id === hospitalId || h.registrationNo === hospitalId || h.email?.toLowerCase() === hospitalId.toLowerCase());
+  if (target) {
+    allTimeHospitalsMap.delete(target.registrationNo);
+    allTimeHospitalsMap.delete(target.id);
+    const updatedList = Array.from(allTimeHospitalsMap.values()).filter(h => h.id !== target.id && h.registrationNo !== target.registrationNo);
+    allTimeHospitalsMap.clear();
+    updatedList.forEach(h => {
+      allTimeHospitalsMap.set(h.id, h);
+      if (h.registrationNo) allTimeHospitalsMap.set(h.registrationNo, h);
+    });
+    saveTempCache(updatedList);
+
+    try {
+      eventBroadcaster.broadcast('HOSPITAL_DELETED', {
+        hospitalId: target.id,
+        name: target.name
+      });
+    } catch (e) {}
+
+    return true;
+  }
+  return false;
+}

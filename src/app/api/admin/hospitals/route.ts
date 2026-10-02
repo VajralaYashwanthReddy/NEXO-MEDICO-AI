@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
-import { getGlobalHospitals, addGlobalHospital, updateGlobalHospitalStatus } from '@/lib/hospitalStore';
+import { getGlobalHospitals, addGlobalHospital, updateGlobalHospitalStatus, deleteGlobalHospitalInMemory } from '@/lib/hospitalStore';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -81,24 +81,56 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Hospital name, registration number, email, and phone are required' }, { status: 400 });
     }
 
+    const regClean = registrationNo.trim().toUpperCase();
+    const emailClean = email.toLowerCase().trim();
+    const phoneClean = phone.trim();
+    const phoneDigits = phoneClean.replace(/\D/g, '');
+
+    // Check existing hospital in memory store first
+    const globalHospitals = getGlobalHospitals();
+    const existingInStore = globalHospitals.find(h => {
+      if (h.registrationNo?.toUpperCase() === regClean) return true;
+      if (h.email?.toLowerCase().trim() === emailClean) return true;
+      if (h.phone) {
+        const hDigits = h.phone.replace(/\D/g, '');
+        if (phoneDigits.length >= 7 && hDigits.length >= 7 && (hDigits.endsWith(phoneDigits) || phoneDigits.endsWith(hDigits))) return true;
+        if (h.phone.trim() === phoneClean) return true;
+      }
+      return false;
+    });
+
+    if (existingInStore) {
+      return NextResponse.json({
+        error: 'A hospital organization with this registration number, email, or phone number is already registered.'
+      }, { status: 400 });
+    }
+
     let createdHospital: any = null;
     try {
-      const existing = await prisma.hospital.findUnique({
-        where: { registrationNo: registrationNo.trim().toUpperCase() }
+      const existingDb = await prisma.hospital.findFirst({
+        where: {
+          OR: [
+            { registrationNo: regClean },
+            { email: emailClean },
+            { phone: phoneClean }
+          ]
+        }
       });
 
-      if (existing) {
-        return NextResponse.json({ error: `Hospital with registration number '${registrationNo}' already exists` }, { status: 400 });
+      if (existingDb) {
+        return NextResponse.json({
+          error: 'A hospital organization with this registration number, email, or phone number is already registered.'
+        }, { status: 400 });
       }
 
       createdHospital = await prisma.hospital.create({
         data: {
           name,
           type: type || 'General Hospital',
-          registrationNo: registrationNo.trim().toUpperCase(),
-          email: email.toLowerCase().trim(),
-          phone,
-          emergencyContact: emergencyContact || phone,
+          registrationNo: regClean,
+          email: emailClean,
+          phone: phoneClean,
+          emergencyContact: emergencyContact || phoneClean,
           address: address || 'Main Medical Complex',
           city: city || 'Metropolis',
           state: state || 'NY',
@@ -114,10 +146,10 @@ export async function POST(req: NextRequest) {
       id: `hosp-${Date.now()}`,
       name,
       type: type || 'General Hospital',
-      registrationNo: registrationNo.trim().toUpperCase(),
-      email: email.toLowerCase().trim(),
-      phone,
-      emergencyContact: emergencyContact || phone,
+      registrationNo: regClean,
+      email: emailClean,
+      phone: phoneClean,
+      emergencyContact: emergencyContact || phoneClean,
       address: address || 'Main Medical Complex',
       city: city || 'Metropolis',
       state: state || 'NY',
@@ -186,6 +218,42 @@ export async function PUT(req: NextRequest) {
       message: `Hospital profile updated successfully`,
       hospital: updatedHosp || { id: hospitalId, status: status || 'ACTIVE' }
     });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const user = getUserFromRequest(req);
+    const { searchParams } = new URL(req.url);
+    const hospitalId = searchParams.get('hospitalId');
+
+    if (!hospitalId) {
+      return NextResponse.json({ error: 'hospitalId is required' }, { status: 400 });
+    }
+
+    deleteGlobalHospitalInMemory(hospitalId);
+
+    try {
+      await prisma.hospital.delete({
+        where: { id: hospitalId }
+      });
+    } catch (dbErr: any) {
+      console.warn('Database delete skipped in /api/admin/hospitals DELETE:', dbErr.message);
+    }
+
+    try {
+      await createAuditLog({
+        hospitalId,
+        userId: user?.id || null,
+        action: 'PLATFORM_SUPER_ADMIN_DELETE_HOSPITAL',
+        resource: `Hospital:${hospitalId}`,
+        details: { hospitalId }
+      });
+    } catch (aErr) {}
+
+    return NextResponse.json({ message: 'Hospital tenant permanently deleted successfully' });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
