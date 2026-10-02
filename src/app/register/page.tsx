@@ -10,22 +10,22 @@ import { VisualCaptcha, MockOtpModal } from '@/components/SecurityVerification';
 export default function HospitalRegisterWizard() {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
-    hospitalName: '',
+    hospitalName: 'St. Jude Memorial Hospital',
     hospitalType: 'Multi-Specialty Research Hospital',
     registrationNo: `REG-2026-${Math.floor(10000 + Math.random() * 90000)}`,
-    email: '',
-    phone: '',
-    address: '',
-    city: '',
-    state: '',
+    email: 'contact@stjudehospital.org',
+    phone: '+1 (555) 019-2831',
+    address: '742 Healthcare Boulevard, Medical District',
+    city: 'Metropolis',
+    state: 'NY',
     country: 'USA',
-    website: '',
-    emergencyContact: '',
+    website: 'https://stjudehospital.org',
+    emergencyContact: '+1 (555) 911-0000',
     numberDepartments: '5',
     numberBeds: '50',
-    adminName: '',
-    adminEmail: '',
-    adminPassword: ''
+    adminName: 'Dr. Arthur Vance',
+    adminEmail: 'admin@stjudehospital.org',
+    adminPassword: 'password123'
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
