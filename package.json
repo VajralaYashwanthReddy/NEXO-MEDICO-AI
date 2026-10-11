@@ -12,7 +12,10 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "@prisma/adapter-neon": "^5.22.0",
     "@prisma/client": "^5.10.0",
+    "@types/ws": "^8.18.2",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.0",
     "jsonwebtoken": "^9.0.2",
@@ -21,7 +24,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.12.2",
-    "tailwind-merge": "^2.2.1"
+    "tailwind-merge": "^2.2.1",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
