@@ -107,5 +107,13 @@ export async function GET(req: NextRequest) {
     results.prismaKnownGood = { ok: false, error: e.message };
   }
 
+  // Test 4d: prisma shared instance from @/lib/prisma
+  try {
+    const c = await prisma.hospital.count();
+    results.prismaShared = { ok: true, count: c };
+  } catch (e: any) {
+    results.prismaShared = { ok: false, error: e.message };
+  }
+
   return NextResponse.json(results);
 }
