@@ -49,46 +49,23 @@ export async function GET(req: NextRequest) {
       DATABASE_URL: maskUrl(rawDbUrl),
       DIRECT_URL: maskUrl(rawDirectUrl),
     },
+    passwordInfo: {
+      dbUrlPassLength: rawDbUrl ? (rawDbUrl.match(/:([^@]+)@/)?.[1]?.length || 0) : 0,
+      matchesKnownSecret: rawDbUrl?.includes('npg_3brQoIn5sYwT'),
+      directPassLength: rawDirectUrl ? (rawDirectUrl.match(/:([^@]+)@/)?.[1]?.length || 0) : 0,
+    },
     tcpPooler: await testTcp(poolerHost, 5432),
     tcpDirect: await testTcp(directHost, 5432),
     prismaTests: {}
   };
 
-  // Test 1: Prisma with raw DIRECT_URL (Direct Compute)
-  if (rawDirectUrl) {
-    const p = new (require('@prisma/client').PrismaClient)({
-      datasources: { db: { url: rawDirectUrl + (rawDirectUrl.includes('?') ? '&' : '?') + 'connect_timeout=15' } }
-    });
-    try {
-      const c = await p.hospital.count();
-      results.prismaTests.directUrl = { ok: true, count: c };
-    } catch (e: any) {
-      results.prismaTests.directUrl = { ok: false, error: e.message };
-    } finally {
-      await p.$disconnect();
-    }
-  }
+  const knownGoodUrl = 'postgresql://neondb_owner:npg_3brQoIn5sYwT@ep-weathered-shadow-aemn0usb-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require';
 
-  // Test 2: Prisma with raw DATABASE_URL (Pooler)
-  if (rawDbUrl) {
-    const p = new (require('@prisma/client').PrismaClient)({
-      datasources: { db: { url: rawDbUrl + (rawDbUrl.includes('?') ? '&' : '?') + 'connect_timeout=15' } }
-    });
-    try {
-      const c = await p.hospital.count();
-      results.prismaTests.poolerRaw = { ok: true, count: c };
-    } catch (e: any) {
-      results.prismaTests.poolerRaw = { ok: false, error: e.message };
-    } finally {
-      await p.$disconnect();
-    }
-  }
-
-  // Test 4: pg.Client direct test
+  // Test 4a: pg.Client with Vercel's process.env.DATABASE_URL
   try {
     const { Client } = require('pg');
     const client = new Client({
-      connectionString: rawDbUrl || rawDirectUrl,
+      connectionString: rawDbUrl,
       ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 10000
     });
@@ -96,9 +73,38 @@ export async function GET(req: NextRequest) {
     await client.connect();
     const pgRes = await client.query('SELECT count(*) as count FROM "Hospital"');
     await client.end();
-    results.pgTest = { ok: true, count: pgRes.rows[0]?.count, timeMs: Date.now() - t0 };
+    results.pgTestEnv = { ok: true, count: pgRes.rows[0]?.count, timeMs: Date.now() - t0 };
   } catch (pgErr: any) {
-    results.pgTest = { ok: false, error: pgErr.message, code: pgErr.code, routine: pgErr.routine };
+    results.pgTestEnv = { ok: false, error: pgErr.message, code: pgErr.code };
+  }
+
+  // Test 4b: pg.Client with known good credentials
+  try {
+    const { Client } = require('pg');
+    const client = new Client({
+      connectionString: knownGoodUrl,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 10000
+    });
+    const t0 = Date.now();
+    await client.connect();
+    const pgRes = await client.query('SELECT count(*) as count FROM "Hospital"');
+    await client.end();
+    results.pgTestKnownGood = { ok: true, count: pgRes.rows[0]?.count, timeMs: Date.now() - t0 };
+  } catch (pgErr: any) {
+    results.pgTestKnownGood = { ok: false, error: pgErr.message, code: pgErr.code };
+  }
+
+  // Test 4c: Prisma with known good credentials
+  try {
+    const p = new (require('@prisma/client').PrismaClient)({
+      datasources: { db: { url: knownGoodUrl + '&connect_timeout=15' } }
+    });
+    const c = await p.hospital.count();
+    results.prismaKnownGood = { ok: true, count: c };
+    await p.$disconnect();
+  } catch (e: any) {
+    results.prismaKnownGood = { ok: false, error: e.message };
   }
 
   return NextResponse.json(results);
