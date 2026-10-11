@@ -1,4 +1,11 @@
 import { PrismaClient } from '@prisma/client';
+import dns from 'dns';
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch (e) {
+  // Ignore in environments where not supported
+}
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
