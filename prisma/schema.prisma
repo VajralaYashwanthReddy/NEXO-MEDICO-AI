@@ -19,6 +19,7 @@ model Hospital {
   city             String
   state            String
   country          String
+  pinCode          String?
   website          String?
   emergencyContact String
   deptCount        Int      @default(0)

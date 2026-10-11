@@ -617,7 +617,7 @@ export default function AdminHospitalsPage() {
                       <span className="font-extrabold text-cyan-800 bg-cyan-50 px-2.5 py-0.5 rounded-lg border border-cyan-200 text-[10px] font-mono block w-max mb-1">
                         {h.registrationNo}
                       </span>
-                      <span className="font-semibold text-slate-600">{h.city}, {h.state || h.country}</span>
+                      <span className="font-semibold text-slate-600">{h.city}, {h.state || h.country}{h.pinCode ? ` - PIN: ${h.pinCode}` : ''}</span>
                     </td>
                     <td className="p-4 text-slate-600">
                       <span className="block font-extrabold text-slate-800">{h.email}</span>
@@ -893,7 +893,7 @@ export default function AdminHospitalsPage() {
                     <div><span className="text-slate-400 font-bold block">Primary Email:</span> <strong className="text-slate-900">{detailModalHospital.email}</strong></div>
                     <div><span className="text-slate-400 font-bold block">Main Phone:</span> <strong className="text-slate-900">{detailModalHospital.phone}</strong></div>
                     <div><span className="text-slate-400 font-bold block">24/7 Emergency Line:</span> <strong className="text-rose-600">{detailModalHospital.emergencyContact}</strong></div>
-                    <div><span className="text-slate-400 font-bold block">Address:</span> <strong className="text-slate-900">{detailModalHospital.address}, {detailModalHospital.city}, {detailModalHospital.country}</strong></div>
+                    <div><span className="text-slate-400 font-bold block">Address:</span> <strong className="text-slate-900">{detailModalHospital.address}, {detailModalHospital.city}, {detailModalHospital.state || ''} {detailModalHospital.pinCode ? `(PIN: ${detailModalHospital.pinCode})` : ''}, {detailModalHospital.country}</strong></div>
                   </div>
                 </div>
               )}

@@ -71,27 +71,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Check saved session in client
+    // Check saved session in client via HTTP-only cookie (primary) or optional token header
     try {
       const savedToken = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
       if (savedToken) {
         setToken(savedToken);
-        fetch('/api/auth/me', {
-          headers: { Authorization: `Bearer ${savedToken}` }
-        })
-          .then(res => res.json())
-          .then(data => {
-            if (data.user) {
-              setUser(sanitizeUser(data.user));
-            } else {
-              logout();
-            }
-          })
-          .catch(() => logout())
-          .finally(() => setLoading(false));
-      } else {
-        setLoading(false);
       }
+      const headers: Record<string, string> = {};
+      if (savedToken) {
+        headers['Authorization'] = `Bearer ${savedToken}`;
+      }
+
+      fetch('/api/auth/me', {
+        headers,
+        credentials: 'include'
+      })
+        .then(res => {
+          if (!res.ok) throw new Error('Unauthenticated');
+          return res.json();
+        })
+        .then(data => {
+          if (data?.user) {
+            setUser(sanitizeUser(data.user));
+          } else {
+            setUser(null);
+          }
+        })
+        .catch(() => {
+          setUser(null);
+        })
+        .finally(() => setLoading(false));
     } catch (e) {
       setLoading(false);
     }
@@ -214,7 +223,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setToken(null);
     setUser(null);
-    fetch('/api/auth/logout', { method: 'POST' });
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     router.push('/');
   };
 

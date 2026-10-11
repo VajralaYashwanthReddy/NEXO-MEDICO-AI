@@ -4,6 +4,17 @@ import { hashPassword, signJwtToken } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
 import { addGlobalHospital } from '@/lib/hospitalStore';
 import { ALL_INDIAN_STATES_AND_UTS } from '@/lib/indiaLocations';
+import { generateNextHospitalRegistrationNo } from '@/lib/registrationNumber';
+
+export async function GET(req: NextRequest) {
+  try {
+    const registrationNo = await generateNextHospitalRegistrationNo();
+    return NextResponse.json({ registrationNo }, { status: 200 });
+  } catch (err: any) {
+    const year = new Date().getFullYear();
+    return NextResponse.json({ registrationNo: `NMX-HOSP-${year}-000001` }, { status: 200 });
+  }
+}
 
 export async function POST(req: NextRequest) {
   let body: any = {};
@@ -23,6 +34,7 @@ export async function POST(req: NextRequest) {
     city,
     state,
     country,
+    pinCode,
     website,
     emergencyContact,
     numberDepartments,
@@ -35,9 +47,6 @@ export async function POST(req: NextRequest) {
   // 1. Strict required field validation
   if (!hospitalName?.trim()) {
     return NextResponse.json({ error: 'Hospital legal name is required', field: 'hospitalName' }, { status: 400 });
-  }
-  if (!registrationNo?.trim()) {
-    return NextResponse.json({ error: 'Hospital registration number is required', field: 'registrationNo' }, { status: 400 });
   }
   if (!email?.trim() || !email.includes('@')) {
     return NextResponse.json({ error: 'Valid hospital official email is required', field: 'email' }, { status: 400 });
@@ -65,7 +74,10 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Normalization
-  const finalRegNo = registrationNo.trim().toUpperCase();
+  let finalRegNo = (registrationNo || '').trim().toUpperCase();
+  if (!finalRegNo) {
+    finalRegNo = await generateNextHospitalRegistrationNo();
+  }
   const finalHospitalEmail = email.toLowerCase().trim();
   const finalAdminEmail = adminEmail.toLowerCase().trim();
   const finalPhone = phone.trim();
@@ -74,8 +86,18 @@ export async function POST(req: NextRequest) {
   const finalCountry = (country?.trim() === 'IN' || country?.trim() === 'India (IND)' || !country?.trim()) ? 'IN' : country.trim();
   const finalState = state?.trim() || '';
 
-  // 3. Location State / UT validation
+  // 3. Location State / UT & PIN Code validation
+  const cleanPin = String(pinCode || '').trim().replace(/\s+/g, '');
+  if (!cleanPin) {
+    return NextResponse.json({ error: 'PIN Code is required', field: 'pinCode' }, { status: 400 });
+  }
   if (finalCountry === 'IN') {
+    if (!/^\d{6}$/.test(cleanPin)) {
+      return NextResponse.json({
+        error: 'Please enter a valid 6-digit Indian PIN code (digits only)',
+        field: 'pinCode'
+      }, { status: 400 });
+    }
     if (!finalState || !ALL_INDIAN_STATES_AND_UTS.includes(finalState)) {
       return NextResponse.json({
         error: 'Please select a valid Indian State or Union Territory from the dropdown list.',
@@ -83,6 +105,12 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
   } else {
+    if (cleanPin.length < 3 || cleanPin.length > 10) {
+      return NextResponse.json({
+        error: 'Please enter a valid postal code',
+        field: 'pinCode'
+      }, { status: 400 });
+    }
     if (!finalState) {
       return NextResponse.json({
         error: 'State / Province is required.',
@@ -143,10 +171,14 @@ export async function POST(req: NextRequest) {
       where: { registrationNo: finalRegNo }
     });
     if (existingHospReg) {
-      return NextResponse.json({
-        error: 'Registration number is already in use. Please check the registration number.',
-        field: 'registrationNo'
-      }, { status: 409 });
+      if (finalRegNo.startsWith('NMX-HOSP-')) {
+        finalRegNo = await generateNextHospitalRegistrationNo();
+      } else {
+        return NextResponse.json({
+          error: 'Registration number is already in use. Please check the registration number.',
+          field: 'registrationNo'
+        }, { status: 409 });
+      }
     }
 
     // 9. Hash administrator password
@@ -166,6 +198,7 @@ export async function POST(req: NextRequest) {
           city: city.trim(),
           state: finalState,
           country: finalCountry,
+          pinCode: cleanPin,
           website: website?.trim() || null,
           emergencyContact: emergencyContact.trim(),
           deptCount: parseInt(numberDepartments || '5', 10) || 5,

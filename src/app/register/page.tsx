@@ -27,6 +27,7 @@ export default function HospitalRegisterWizard() {
     phone: '',
     address: '',
     city: '',
+    pinCode: '',
     state: '',
     country: 'IN',
     website: '',
@@ -41,6 +42,7 @@ export default function HospitalRegisterWizard() {
   const [successMessage, setSuccessMessage] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   // Searchable State Dropdown States
   const [stateDropdownOpen, setStateDropdownOpen] = useState(false);
@@ -54,6 +56,22 @@ export default function HospitalRegisterWizard() {
   const [showOtpModal, setShowOtpModal] = useState(false);
 
   const { login } = useAuth();
+
+  // Auto-fetch next available registration number on initial mount
+  useEffect(() => {
+    fetch('/api/hospitals/register')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.registrationNo) {
+          setFormData(prev => ({ ...prev, registrationNo: data.registrationNo }));
+        }
+      })
+      .catch(err => {
+        console.warn('Could not auto-fetch registration number:', err);
+        const year = new Date().getFullYear();
+        setFormData(prev => ({ ...prev, registrationNo: `NMX-HOSP-${year}-000001` }));
+      });
+  }, []);
 
   // Close State Dropdown on outside click
   useEffect(() => {
@@ -88,9 +106,6 @@ export default function HospitalRegisterWizard() {
       if (!formData.hospitalName.trim()) {
         newFieldErrors.hospitalName = 'Please enter the hospital legal name.';
       }
-      if (!formData.registrationNo.trim()) {
-        newFieldErrors.registrationNo = 'Please enter the official registration number.';
-      }
       if (!formData.email.trim() || !formData.email.includes('@')) {
         newFieldErrors.email = 'Please enter a valid official hospital email address.';
       }
@@ -113,6 +128,16 @@ export default function HospitalRegisterWizard() {
       if (!formData.city.trim()) {
         newFieldErrors.city = 'Please enter the city location.';
       }
+
+      const cleanPin = formData.pinCode.trim();
+      if (!cleanPin) {
+        newFieldErrors.pinCode = 'PIN Code is required.';
+      } else if (formData.country === 'IN' && !/^\d{6}$/.test(cleanPin)) {
+        newFieldErrors.pinCode = 'Please enter a valid 6-digit Indian PIN code (digits only).';
+      } else if (cleanPin.length < 3 || cleanPin.length > 10) {
+        newFieldErrors.pinCode = 'Please enter a valid postal code.';
+      }
+
       if (formData.country === 'IN' && !formData.state.trim()) {
         newFieldErrors.state = 'Please select a State or Union Territory from the dropdown.';
       } else if (!formData.state.trim()) {
@@ -124,7 +149,7 @@ export default function HospitalRegisterWizard() {
 
       if (Object.keys(newFieldErrors).length > 0) {
         setFieldErrors(prev => ({ ...prev, ...newFieldErrors }));
-        setError('Please fill in required location details and 24/7 emergency dispatch line.');
+        setError('Please fill in required location details, PIN Code, and 24/7 emergency dispatch line.');
         return false;
       }
       return true;
@@ -180,6 +205,8 @@ export default function HospitalRegisterWizard() {
   };
 
   const handleOtpSuccess = async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setShowOtpModal(false);
     setLoading(true);
     setError('');
@@ -193,6 +220,7 @@ export default function HospitalRegisterWizard() {
       phone: formData.phone.trim(),
       address: formData.address.trim(),
       city: formData.city.trim(),
+      pinCode: formData.pinCode.trim(),
       state: formData.state.trim(),
       country: formData.country.trim() || 'IN',
       website: formData.website.trim() || null,
@@ -208,6 +236,7 @@ export default function HospitalRegisterWizard() {
       const res = await fetch('/api/hospitals/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(finalPayload)
       });
       const data = await res.json();
@@ -218,15 +247,8 @@ export default function HospitalRegisterWizard() {
 
         if (errorField) {
           setFieldErrors({ [errorField]: errorMsg });
-          // If the field belongs to Step 1 or Step 2, jump to that step so the error is clearly visible next to the input
-          if (['hospitalName', 'registrationNo', 'email', 'phone'].includes(errorField)) {
-            setStep(1);
-          } else if (['address', 'city', 'state', 'emergencyContact', 'website'].includes(errorField)) {
-            setStep(2);
-          } else if (['adminName', 'adminEmail', 'adminPassword'].includes(errorField)) {
-            setStep(4);
-          }
         }
+        // Never reset step to 1 or clear entered fields on error
         throw new Error(errorMsg);
       }
 
@@ -245,20 +267,13 @@ export default function HospitalRegisterWizard() {
         permissions: ['*']
       });
 
-      if (typeof window !== 'undefined' && hospital) {
-        localStorage.setItem('nexo_active_hospital', hospital.id);
-        localStorage.setItem('nexo_active_hospital_name', hospital.name);
-
-        const localSaved = JSON.parse(localStorage.getItem('nexo_custom_registered_hospitals') || '[]');
-        const updated = [hospital, ...localSaved.filter((h: any) => h.id !== hospital.id && h.registrationNo !== hospital.registrationNo)];
-        localStorage.setItem('nexo_custom_registered_hospitals', JSON.stringify(updated));
-      }
-
-      // Hard redirect to Hospital Admin Dashboard to guarantee clean session and tenant data load
+      // Hard redirect to Hospital Admin Dashboard to guarantee clean HTTP-only cookie session and tenant data load
       window.location.href = `/admin/dashboard?hospitalId=${hospital.id}`;
     } catch (err: any) {
       setError(err.message || 'Hospital registration failed. Please review your details and try again.');
+    } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -287,7 +302,13 @@ export default function HospitalRegisterWizard() {
         {/* Step Indicator */}
         <div className="flex items-center justify-between mb-8 px-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
           {[1, 2, 3, 4].map((s) => (
-            <div key={s} className="flex items-center gap-2">
+            <div
+              key={s}
+              onClick={() => {
+                if (s < step) setStep(s);
+              }}
+              className={`flex items-center gap-2 ${s < step ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+            >
               <div
                 className={`w-8 h-8 rounded-full font-bold flex items-center justify-center text-xs transition-all ${
                   step === s
@@ -351,22 +372,23 @@ export default function HospitalRegisterWizard() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-300">Registration Number *</label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.registrationNo}
-                      onChange={(e) => updateField('registrationNo', e.target.value)}
-                      placeholder="e.g. REG-IND-2026-900"
-                      className={`mt-1 w-full px-3.5 py-2.5 bg-slate-950 border rounded-lg text-sm text-white uppercase font-mono focus:ring-2 focus:ring-cyan-500 focus:outline-none ${
-                        fieldErrors.registrationNo ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-800'
-                      }`}
-                    />
-                    {fieldErrors.registrationNo && (
-                      <p className="mt-1 text-xs text-rose-400 font-semibold flex items-center gap-1">
-                        <span>⚠️</span> {fieldErrors.registrationNo}
-                      </p>
-                    )}
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Auto-Generated Hospital Registration Number
+                    </label>
+                    <div className="relative mt-1">
+                      <input
+                        type="text"
+                        readOnly
+                        value={formData.registrationNo || 'Generating official registration number...'}
+                        className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-slate-700 rounded-lg text-sm text-cyan-300 font-mono font-bold tracking-wider cursor-not-allowed select-none focus:outline-none"
+                      />
+                      <span className="absolute right-2.5 top-2.5 text-[10px] bg-cyan-950/90 text-cyan-400 border border-cyan-800/80 px-2 py-0.5 rounded-md font-semibold select-none">
+                        🔒 Auto-Generated
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Permanent sequential registration number assigned automatically by the Nexo Medico platform.
+                    </p>
                   </div>
 
                   <div>
@@ -448,7 +470,7 @@ export default function HospitalRegisterWizard() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300">City *</label>
                     <input
@@ -456,16 +478,45 @@ export default function HospitalRegisterWizard() {
                       required
                       value={formData.city}
                       onChange={(e) => updateField('city', e.target.value)}
-                      placeholder="e.g. Chennai"
+                      placeholder="e.g. Hyderabad"
                       className={`mt-1 w-full px-3.5 py-2.5 bg-slate-950 border rounded-lg text-sm text-white focus:ring-2 focus:ring-cyan-500 focus:outline-none ${
-                        fieldErrors.city ? 'border-rose-500' : 'border-slate-800'
+                        fieldErrors.city ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-800'
                       }`}
                     />
                     {fieldErrors.city && (
-                      <p className="mt-1 text-xs text-rose-400 font-semibold">⚠️ {fieldErrors.city}</p>
+                      <p className="mt-1 text-xs text-rose-400 font-semibold flex items-center gap-1">
+                        <span>⚠️</span> {fieldErrors.city}
+                      </p>
                     )}
                   </div>
 
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300">PIN Code / Postal Code *</label>
+                    <input
+                      type="text"
+                      required
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={formData.pinCode}
+                      onChange={(e) => updateField('pinCode', e.target.value.replace(/\D/g, ''))}
+                      placeholder="e.g. 500034"
+                      className={`mt-1 w-full px-3.5 py-2.5 bg-slate-950 border rounded-lg text-sm text-white font-mono font-bold tracking-wider focus:ring-2 focus:ring-cyan-500 focus:outline-none ${
+                        fieldErrors.pinCode ? 'border-rose-500 ring-1 ring-rose-500' : 'border-slate-800'
+                      }`}
+                    />
+                    {fieldErrors.pinCode ? (
+                      <p className="mt-1 text-xs text-rose-400 font-semibold flex items-center gap-1">
+                        <span>⚠️</span> {fieldErrors.pinCode}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        6-digit postal PIN code without spaces or letters
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Searchable State / Union Territory Dropdown */}
                   <div className="relative" ref={stateDropdownRef}>
                     <label className="block text-xs font-semibold text-slate-300">State / Union Territory *</label>
@@ -568,7 +619,9 @@ export default function HospitalRegisterWizard() {
                     )}
 
                     {fieldErrors.state && (
-                      <p className="mt-1 text-xs text-rose-400 font-semibold">⚠️ {fieldErrors.state}</p>
+                      <p className="mt-1 text-xs text-rose-400 font-semibold flex items-center gap-1">
+                        <span>⚠️</span> {fieldErrors.state}
+                      </p>
                     )}
                   </div>
 

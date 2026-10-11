@@ -15,6 +15,7 @@ export interface RegisteredHospital {
   city: string;
   state: string;
   country: string;
+  pinCode?: string | null;
   status: string;
   deptCount?: number;
   bedCount?: number;
