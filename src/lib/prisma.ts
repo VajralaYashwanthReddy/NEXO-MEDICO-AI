@@ -1,42 +1,45 @@
 import { PrismaClient } from '@prisma/client';
-import { PrismaNeon } from '@prisma/adapter-neon';
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import ws from 'ws';
-
-neonConfig.webSocketConstructor = ws;
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
-  pool: Pool | undefined;
 };
 
-function createPrismaClient(): PrismaClient {
-  const connectionString = process.env.DATABASE_URL || process.env.DIRECT_URL;
-  if (!connectionString) {
-    return new PrismaClient();
+function getRuntimeDatabaseUrl(): string | undefined {
+  const rawUrl = process.env.DATABASE_URL || process.env.DIRECT_URL;
+  if (!rawUrl) return undefined;
+
+  try {
+    const url = new URL(rawUrl);
+    if (!url.searchParams.has('sslmode')) {
+      url.searchParams.set('sslmode', 'require');
+    }
+    if (!url.searchParams.has('connect_timeout')) {
+      url.searchParams.set('connect_timeout', '30');
+    }
+    if (!url.searchParams.has('pool_timeout')) {
+      url.searchParams.set('pool_timeout', '30');
+    }
+    return url.toString();
+  } catch {
+    return rawUrl;
   }
-
-  // If connecting to Neon PostgreSQL, use the battle-tested serverless WebSocket adapter
-  if (connectionString.includes('neon.tech')) {
-    const pool = globalForPrisma.pool ?? new Pool({ connectionString });
-    if (process.env.NODE_ENV !== 'production') globalForPrisma.pool = pool;
-
-    const adapter = new PrismaNeon(pool);
-    return new PrismaClient({
-      adapter,
-      log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-    });
-  }
-
-  return new PrismaClient({
-    datasources: {
-      db: { url: connectionString }
-    },
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-  });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+const runtimeDbUrl = getRuntimeDatabaseUrl();
+
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    datasources: runtimeDbUrl
+      ? {
+          db: {
+            url: runtimeDbUrl,
+          },
+        }
+      : undefined,
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  });
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
 
