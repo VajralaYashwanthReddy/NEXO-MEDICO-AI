@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
   const rawDirectUrl = process.env.DIRECT_URL;
 
   const results: any = {
+    commitVersion: 'v2-adapter',
     timestamp: new Date().toISOString(),
     nodeVersion: process.version,
     maskedUrls: {
