@@ -29,50 +29,66 @@ function testTcp(host: string, port: number, timeout = 4000): Promise<{ ok: bool
   });
 }
 
+function maskUrl(u?: string) {
+  if (!u) return undefined;
+  return u.replace(/:[^:@]+@/, ':***@');
+}
+
 export async function GET(req: NextRequest) {
   const poolerHost = 'ep-weathered-shadow-aemn0usb-pooler.c-2.us-east-2.aws.neon.tech';
   const directHost = 'ep-weathered-shadow-aemn0usb.c-2.us-east-2.aws.neon.tech';
 
+  const rawDbUrl = process.env.DATABASE_URL;
+  const rawDirectUrl = process.env.DIRECT_URL;
+
   const results: any = {
     timestamp: new Date().toISOString(),
     nodeVersion: process.version,
-    env: {
-      hasDatabaseUrl: Boolean(process.env.DATABASE_URL),
-      hasDirectUrl: Boolean(process.env.DIRECT_URL),
-    }
+    maskedUrls: {
+      DATABASE_URL: maskUrl(rawDbUrl),
+      DIRECT_URL: maskUrl(rawDirectUrl),
+    },
+    tcpPooler: await testTcp(poolerHost, 5432),
+    tcpDirect: await testTcp(directHost, 5432),
+    prismaTests: {}
   };
 
-  // 1. DNS Lookup default
-  try {
-    const dnsDefault = await dns.promises.lookup(poolerHost, { all: true });
-    results.dnsDefault = dnsDefault;
-  } catch (err: any) {
-    results.dnsDefault = { error: err.message };
+  // Test 1: Prisma with raw DIRECT_URL (Direct Compute)
+  if (rawDirectUrl) {
+    const p = new (require('@prisma/client').PrismaClient)({
+      datasources: { db: { url: rawDirectUrl + (rawDirectUrl.includes('?') ? '&' : '?') + 'connect_timeout=15' } }
+    });
+    try {
+      const c = await p.hospital.count();
+      results.prismaTests.directUrl = { ok: true, count: c };
+    } catch (e: any) {
+      results.prismaTests.directUrl = { ok: false, error: e.message };
+    } finally {
+      await p.$disconnect();
+    }
   }
 
-  // 2. TCP test with default host
-  results.tcpDefault = await testTcp(poolerHost, 5432);
-
-  // 3. Try with ipv4first
-  try {
-    dns.setDefaultResultOrder('ipv4first');
-    const dnsIpv4 = await dns.promises.lookup(poolerHost, { all: true });
-    results.dnsIpv4First = dnsIpv4;
-    results.tcpIpv4First = await testTcp(poolerHost, 5432);
-  } catch (err: any) {
-    results.ipv4FirstError = err.message;
+  // Test 2: Prisma with raw DATABASE_URL (Pooler)
+  if (rawDbUrl) {
+    const p = new (require('@prisma/client').PrismaClient)({
+      datasources: { db: { url: rawDbUrl + (rawDbUrl.includes('?') ? '&' : '?') + 'connect_timeout=15' } }
+    });
+    try {
+      const c = await p.hospital.count();
+      results.prismaTests.poolerRaw = { ok: true, count: c };
+    } catch (e: any) {
+      results.prismaTests.poolerRaw = { ok: false, error: e.message };
+    } finally {
+      await p.$disconnect();
+    }
   }
 
-  // 4. Test direct host
-  results.tcpDirect = await testTcp(directHost, 5432);
-
-  // 5. Test Prisma query
+  // Test 3: Existing prisma instance from @/lib/prisma
   try {
-    const t0 = Date.now();
-    const hospCount = await prisma.hospital.count();
-    results.prismaQuery = { ok: true, hospCount, timeMs: Date.now() - t0 };
-  } catch (prismaErr: any) {
-    results.prismaQuery = { ok: false, error: prismaErr.message, code: prismaErr.code };
+    const c = await prisma.hospital.count();
+    results.prismaTests.sharedPrisma = { ok: true, count: c };
+  } catch (e: any) {
+    results.prismaTests.sharedPrisma = { ok: false, error: e.message };
   }
 
   return NextResponse.json(results);
