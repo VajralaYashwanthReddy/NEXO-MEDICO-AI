@@ -16,6 +16,8 @@ export interface RegisteredHospital {
   state: string;
   country: string;
   status: string;
+  deptCount?: number;
+  bedCount?: number;
   createdAt: string | Date;
   _count?: {
     users: number;

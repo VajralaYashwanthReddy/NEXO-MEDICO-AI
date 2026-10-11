@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { hashPassword, signJwtToken } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
 import { addGlobalHospital } from '@/lib/hospitalStore';
+import { ALL_INDIAN_STATES_AND_UTS } from '@/lib/indiaLocations';
 
 export async function POST(req: NextRequest) {
   let body: any = {};
@@ -31,149 +32,239 @@ export async function POST(req: NextRequest) {
     adminPassword
   } = body;
 
-  if (!hospitalName || !registrationNo || !email || !adminEmail || !adminPassword) {
-    return NextResponse.json({ error: 'Missing required hospital or admin registration fields' }, { status: 400 });
+  // 1. Strict required field validation
+  if (!hospitalName?.trim()) {
+    return NextResponse.json({ error: 'Hospital legal name is required', field: 'hospitalName' }, { status: 400 });
+  }
+  if (!registrationNo?.trim()) {
+    return NextResponse.json({ error: 'Hospital registration number is required', field: 'registrationNo' }, { status: 400 });
+  }
+  if (!email?.trim() || !email.includes('@')) {
+    return NextResponse.json({ error: 'Valid hospital official email is required', field: 'email' }, { status: 400 });
+  }
+  if (!phone?.trim()) {
+    return NextResponse.json({ error: 'Hospital contact phone number is required', field: 'phone' }, { status: 400 });
+  }
+  if (!address?.trim()) {
+    return NextResponse.json({ error: 'Hospital street address is required', field: 'address' }, { status: 400 });
+  }
+  if (!city?.trim()) {
+    return NextResponse.json({ error: 'Hospital city is required', field: 'city' }, { status: 400 });
+  }
+  if (!emergencyContact?.trim()) {
+    return NextResponse.json({ error: '24/7 Emergency dispatch line is required', field: 'emergencyContact' }, { status: 400 });
+  }
+  if (!adminName?.trim()) {
+    return NextResponse.json({ error: 'Administrator full name is required', field: 'adminName' }, { status: 400 });
+  }
+  if (!adminEmail?.trim() || !adminEmail.includes('@')) {
+    return NextResponse.json({ error: 'Valid administrator login email is required', field: 'adminEmail' }, { status: 400 });
+  }
+  if (!adminPassword || adminPassword.length < 6) {
+    return NextResponse.json({ error: 'Administrator password must be at least 6 characters', field: 'adminPassword' }, { status: 400 });
+  }
+
+  // 2. Normalization
+  const finalRegNo = registrationNo.trim().toUpperCase();
+  const finalHospitalEmail = email.toLowerCase().trim();
+  const finalAdminEmail = adminEmail.toLowerCase().trim();
+  const finalPhone = phone.trim();
+  const phoneDigits = finalPhone.replace(/\D/g, '');
+
+  const finalCountry = (country?.trim() === 'IN' || country?.trim() === 'India (IND)' || !country?.trim()) ? 'IN' : country.trim();
+  const finalState = state?.trim() || '';
+
+  // 3. Location State / UT validation
+  if (finalCountry === 'IN') {
+    if (!finalState || !ALL_INDIAN_STATES_AND_UTS.includes(finalState)) {
+      return NextResponse.json({
+        error: 'Please select a valid Indian State or Union Territory from the dropdown list.',
+        field: 'state'
+      }, { status: 400 });
+    }
+  } else {
+    if (!finalState) {
+      return NextResponse.json({
+        error: 'State / Province is required.',
+        field: 'state'
+      }, { status: 400 });
+    }
+  }
+
+  // 4. Phone number format validation
+  if (phoneDigits.length < 7 || phoneDigits.length > 15) {
+    return NextResponse.json({
+      error: 'Please enter a valid phone number (between 7 and 15 digits).',
+      field: 'phone'
+    }, { status: 400 });
   }
 
   try {
-    let finalRegNo = registrationNo ? registrationNo.trim().toUpperCase() : `REG-${Date.now()}`;
-    let finalHospitalEmail = email ? email.toLowerCase().trim() : `contact-${Date.now()}@hospital.org`;
-    let finalAdminEmail = adminEmail ? adminEmail.toLowerCase().trim() : `admin-${Date.now()}@hospital.org`;
-
-    // Check existing registration
-    const existingHosp = await prisma.hospital.findFirst({
-      where: {
-        OR: [{ registrationNo: finalRegNo }, { email: finalHospitalEmail }]
-      }
+    // 5. Check for duplicate official hospital email
+    const existingHospEmail = await prisma.hospital.findUnique({
+      where: { email: finalHospitalEmail }
     });
-
-    if (existingHosp) {
-      finalRegNo = `${finalRegNo}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const emailParts = finalHospitalEmail.split('@');
-      finalHospitalEmail = `${emailParts[0]}-${Date.now().toString().slice(-4)}@${emailParts[1] || 'hospital.org'}`;
+    if (existingHospEmail) {
+      return NextResponse.json({
+        error: 'Email is already used. Please use a different email address.',
+        field: 'email'
+      }, { status: 409 });
     }
 
+    // 6. Check for duplicate administrator email
     const existingAdminUser = await prisma.user.findUnique({
       where: { email: finalAdminEmail }
     });
-
     if (existingAdminUser) {
-      const adminEmailParts = finalAdminEmail.split('@');
-      finalAdminEmail = `${adminEmailParts[0]}-${Date.now().toString().slice(-4)}@${adminEmailParts[1] || 'hospital.org'}`;
+      return NextResponse.json({
+        error: 'Email is already used. Please use a different email address.',
+        field: 'adminEmail'
+      }, { status: 409 });
     }
 
-    // 1. Create Hospital Tenant
-    const hospital = await prisma.hospital.create({
-      data: {
-        name: hospitalName,
-        type: hospitalType || 'General Hospital',
-        registrationNo: finalRegNo,
-        email: finalHospitalEmail,
-        phone: phone || '+1 (555) 000-1122',
-        address: address || '100 Medical Center Drive',
-        city: city || 'Metropolis',
-        state: state || 'State',
-        country: country || 'Country',
-        website: website || null,
-        emergencyContact: emergencyContact || phone || '+1 (555) 911-0000',
-        deptCount: parseInt(numberDepartments || '5'),
-        bedCount: parseInt(numberBeds || '50'),
-        status: 'ACTIVE'
+    // 7. Check for duplicate hospital phone number
+    const existingHospPhone = await prisma.hospital.findFirst({
+      where: {
+        OR: [
+          { phone: finalPhone },
+          ...(phoneDigits.length >= 10 ? [{ phone: { endsWith: phoneDigits.slice(-10) } }] : [])
+        ]
       }
     });
+    if (existingHospPhone) {
+      return NextResponse.json({
+        error: 'Phone number is already used. Please use a different phone number.',
+        field: 'phone'
+      }, { status: 409 });
+    }
 
-    // Register into globalStore to ensure immediate availability in Platform Admin
-    addGlobalHospital(hospital);
+    // 8. Check for duplicate hospital registration number
+    const existingHospReg = await prisma.hospital.findUnique({
+      where: { registrationNo: finalRegNo }
+    });
+    if (existingHospReg) {
+      return NextResponse.json({
+        error: 'Registration number is already in use. Please check the registration number.',
+        field: 'registrationNo'
+      }, { status: 409 });
+    }
 
-    // 2. Create Hospital Admin User
+    // 9. Hash administrator password
     const passwordHash = await hashPassword(adminPassword);
-    const adminUser = await prisma.user.create({
-      data: {
-        email: finalAdminEmail,
-        passwordHash,
-        name: adminName || `${hospitalName} Admin`,
-        role: 'HOSPITAL_ADMIN',
-        hospitalId: hospital.id,
-        status: 'ACTIVE'
-      }
-    });
 
-    // 3. Create default core departments
-    const defaultDepts = [
-      { code: 'GENMED', name: 'General Medicine', description: 'Internal medicine & outpatient care' },
-      { code: 'EMERG', name: 'Emergency', description: '24/7 Triage & Acute Trauma' },
-      { code: 'CARD', name: 'Cardiology', description: 'Cardiovascular diagnostics & care' },
-      { code: 'NEUR', name: 'Neurology', description: 'Neurological & spinal health' },
-      { code: 'ICU_DEPT', name: 'Intensive Care', description: 'Critical care & life support unit' }
-    ];
-
-    for (const d of defaultDepts) {
-      await prisma.department.create({
+    // 10. Execute all database writes inside an atomic Prisma transaction
+    const { hospital, adminUser } = await prisma.$transaction(async (tx) => {
+      // 10a. Create Hospital Tenant
+      const createdHospital = await tx.hospital.create({
         data: {
-          hospitalId: hospital.id,
+          name: hospitalName.trim(),
+          type: hospitalType?.trim() || 'General Hospital',
+          registrationNo: finalRegNo,
+          email: finalHospitalEmail,
+          phone: finalPhone,
+          address: address.trim(),
+          city: city.trim(),
+          state: finalState,
+          country: finalCountry,
+          website: website?.trim() || null,
+          emergencyContact: emergencyContact.trim(),
+          deptCount: parseInt(numberDepartments || '5', 10) || 5,
+          bedCount: parseInt(numberBeds || '50', 10) || 50,
+          status: 'ACTIVE'
+        }
+      });
+
+      // 10b. Create Hospital Administrator User
+      const createdAdminUser = await tx.user.create({
+        data: {
+          email: finalAdminEmail,
+          passwordHash,
+          name: adminName.trim(),
+          role: 'HOSPITAL_ADMIN',
+          hospitalId: createdHospital.id,
+          status: 'ACTIVE'
+        }
+      });
+
+      // 10c. Create Core Default Departments in batch
+      const defaultDepts = [
+        { code: 'GENMED', name: 'General Medicine', description: 'Internal medicine & outpatient care' },
+        { code: 'EMERG', name: 'Emergency', description: '24/7 Triage & Acute Trauma' },
+        { code: 'CARD', name: 'Cardiology', description: 'Cardiovascular diagnostics & care' },
+        { code: 'NEUR', name: 'Neurology', description: 'Neurological & spinal health' },
+        { code: 'ICU_DEPT', name: 'Intensive Care', description: 'Critical care & life support unit' }
+      ];
+
+      await tx.department.createMany({
+        data: defaultDepts.map(d => ({
+          hospitalId: createdHospital.id,
           code: d.code,
           name: d.name,
           description: d.description,
           status: 'ACTIVE'
+        }))
+      });
+
+      // 10d. Create Default Wards & Beds in batch
+      const genWard = await tx.ward.create({
+        data: {
+          hospitalId: createdHospital.id,
+          code: 'WARD-GEN',
+          name: 'General Ward',
+          type: 'General',
+          totalBeds: 10
         }
       });
-    }
 
-    // 4. Create default Wards & Beds
-    const genWard = await prisma.ward.create({
-      data: {
-        hospitalId: hospital.id,
-        code: 'WARD-GEN',
-        name: 'General Ward',
-        type: 'General',
-        totalBeds: 10
-      }
-    });
-
-    for (let i = 1; i <= 10; i++) {
-      await prisma.bed.create({
+      const icuWard = await tx.ward.create({
         data: {
+          hospitalId: createdHospital.id,
+          code: 'WARD-ICU',
+          name: 'ICU Ward',
+          type: 'ICU',
+          totalBeds: 5
+        }
+      });
+
+      const bedsData = [
+        ...Array.from({ length: 10 }, (_, i) => ({
           wardId: genWard.id,
-          hospitalId: hospital.id,
-          bedNumber: `G-${i < 10 ? '0' + i : i}`,
+          hospitalId: createdHospital.id,
+          bedNumber: `G-${i < 9 ? '0' + (i + 1) : i + 1}`,
           status: 'AVAILABLE'
-        }
-      });
-    }
-
-    const icuWard = await prisma.ward.create({
-      data: {
-        hospitalId: hospital.id,
-        code: 'WARD-ICU',
-        name: 'ICU Ward',
-        type: 'ICU',
-        totalBeds: 5
-      }
-    });
-
-    for (let i = 1; i <= 5; i++) {
-      await prisma.bed.create({
-        data: {
+        })),
+        ...Array.from({ length: 5 }, (_, i) => ({
           wardId: icuWard.id,
-          hospitalId: hospital.id,
-          bedNumber: `ICU-${i < 10 ? '0' + i : i}`,
+          hospitalId: createdHospital.id,
+          bedNumber: `ICU-${i < 9 ? '0' + (i + 1) : i + 1}`,
           status: 'AVAILABLE'
-        }
-      });
-    }
+        }))
+      ];
 
+      await tx.bed.createMany({
+        data: bedsData
+      });
+
+      return { hospital: createdHospital, adminUser: createdAdminUser };
+    }, { maxWait: 15000, timeout: 30000 });
+
+    // 11. Broadcast and sync with global store for instant real-time platform availability
+    addGlobalHospital(hospital);
+
+    // 12. Create audit log
     try {
       await createAuditLog({
         hospitalId: hospital.id,
         userId: adminUser.id,
         action: 'HOSPITAL_REGISTERED',
         resource: `Hospital:${hospital.id}`,
-        details: { name: hospital.name, registrationNo: hospital.registrationNo }
+        details: { name: hospital.name, registrationNo: hospital.registrationNo, adminEmail: adminUser.email }
       });
     } catch (auditErr) {
       console.warn('Audit log skipped during registration:', auditErr);
     }
 
+    // 13. Sign JWT Token
     const token = signJwtToken({
       id: adminUser.id,
       email: adminUser.email,
@@ -215,67 +306,41 @@ export async function POST(req: NextRequest) {
     return response;
 
   } catch (err: any) {
-    console.warn('Database error during hospital registration, using zero-downtime demo mode response:', err);
+    console.error('Database transaction error during hospital registration:', err);
 
-    // Bulletproof Demo Fallback Response
-    const mockHospitalId = `hosp-${Date.now()}`;
-    const mockAdminId = `usr-admin-${Date.now()}`;
+    // Handle Prisma unique constraint violations (P2002)
+    if (err.code === 'P2002') {
+      const metaTarget = Array.isArray(err.meta?.target) ? err.meta.target.join(' ') : String(err.meta?.target || '');
 
-    const mockHospital = {
-      id: mockHospitalId,
-      name: hospitalName,
-      type: hospitalType || 'General Hospital',
-      registrationNo,
-      email: email.toLowerCase().trim(),
-      phone: phone || '+1 (555) 000-1122',
-      address: address || '100 Healthcare Way',
-      city: city || 'Metropolis',
-      state: state || 'State',
-      country: country || 'Country',
-      website: website || null,
-      emergencyContact: emergencyContact || phone || '+1 (555) 911-0000',
-      deptCount: parseInt(numberDepartments || '5'),
-      bedCount: parseInt(numberBeds || '50'),
-      status: 'ACTIVE',
-      createdAt: new Date().toISOString()
-    };
+      if (metaTarget.includes('email')) {
+        return NextResponse.json({
+          error: 'Email is already used. Please use a different email address.',
+          field: metaTarget.includes('User') || metaTarget.includes('admin') ? 'adminEmail' : 'email'
+        }, { status: 409 });
+      }
 
-    // Store in global store so Platform Super Admin immediately sees it
-    addGlobalHospital(mockHospital);
+      if (metaTarget.includes('phone')) {
+        return NextResponse.json({
+          error: 'Phone number is already used. Please use a different phone number.',
+          field: 'phone'
+        }, { status: 409 });
+      }
 
-    const mockAdminUser = {
-      id: mockAdminId,
-      email: adminEmail.toLowerCase().trim(),
-      name: adminName || `${hospitalName} Admin`,
-      role: 'HOSPITAL_ADMIN',
-      hospitalId: mockHospitalId,
-      hospitalName: hospitalName
-    };
+      if (metaTarget.includes('registrationNo')) {
+        return NextResponse.json({
+          error: 'Registration number is already in use. Please check the registration number.',
+          field: 'registrationNo'
+        }, { status: 409 });
+      }
 
-    const token = signJwtToken({
-      id: mockAdminUser.id,
-      email: mockAdminUser.email,
-      name: mockAdminUser.name,
-      role: mockAdminUser.role,
-      hospitalId: mockHospitalId
-    });
+      return NextResponse.json({
+        error: 'Email is already used. Please use a different email address.',
+        field: 'email'
+      }, { status: 409 });
+    }
 
-    const response = NextResponse.json({
-      message: 'Hospital onboarding successful (Demo Mode)',
-      hospital: mockHospital,
-      adminUser: mockAdminUser,
-      user: mockAdminUser,
-      token
-    }, { status: 201 });
-
-    response.cookies.set('nexo_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 86400
-    });
-
-    return response;
+    return NextResponse.json({
+      error: err.message || 'Hospital registration failed. Please verify your details and try again.'
+    }, { status: 500 });
   }
 }

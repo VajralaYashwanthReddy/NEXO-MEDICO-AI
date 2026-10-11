@@ -22,21 +22,26 @@ export async function GET(req: NextRequest) {
   let labOrdersCount = 0;
   let aiAnalysesCount = 0;
 
+  const user = getUserFromRequest(req);
+
   try {
+    const isHospitalScope = user && user.role === 'HOSPITAL_ADMIN' && user.hospitalId;
+    const hospFilter = isHospitalScope ? { hospitalId: user.hospitalId! } : {};
+
     const results = await Promise.all([
-      prisma.hospital.count(),
-      prisma.hospital.count({ where: { status: 'ACTIVE' } }),
-      prisma.user.count(),
-      prisma.user.count({ where: { status: 'ACTIVE' } }),
-      prisma.patient.count(),
-      prisma.doctorProfile.count(),
-      prisma.nurseProfile.count(),
-      prisma.staffProfile.count(),
-      prisma.appointment.count(),
-      prisma.admission.count({ where: { status: 'ADMITTED' } }),
-      prisma.prescription.count(),
-      prisma.labOrder.count(),
-      prisma.aIPredictionLog.count()
+      isHospitalScope ? 1 : prisma.hospital.count(),
+      isHospitalScope ? 1 : prisma.hospital.count({ where: { status: 'ACTIVE' } }),
+      prisma.user.count({ where: hospFilter }),
+      prisma.user.count({ where: { ...hospFilter, status: 'ACTIVE' } }),
+      prisma.patient.count({ where: hospFilter }),
+      prisma.doctorProfile.count({ where: hospFilter }),
+      prisma.nurseProfile.count({ where: hospFilter }),
+      prisma.staffProfile.count({ where: hospFilter }),
+      prisma.appointment.count({ where: hospFilter }),
+      prisma.admission.count({ where: { ...hospFilter, status: 'ADMITTED' } }),
+      prisma.prescription.count({ where: hospFilter }),
+      prisma.labOrder.count({ where: hospFilter }),
+      prisma.aIPredictionLog.count({ where: hospFilter })
     ]);
 
     hospitalsCount = results[0];

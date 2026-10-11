@@ -621,7 +621,12 @@ export default function AdminHospitalsPage() {
                     </td>
                     <td className="p-4 text-slate-600">
                       <span className="block font-extrabold text-slate-800">{h.email}</span>
-                      <span className="text-slate-500 text-[11px]">{h.phone}</span>
+                      <span className="text-slate-500 text-[11px] block">{h.phone}</span>
+                      {(h.users?.[0] || h.adminUser) && (
+                        <span className="text-[10px] font-semibold text-cyan-700 bg-cyan-50/80 px-1.5 py-0.5 rounded border border-cyan-100 inline-block mt-1">
+                          👤 Admin: {(h.users?.[0]?.name || h.adminUser?.name)} ({(h.users?.[0]?.email || h.adminUser?.email)})
+                        </span>
+                      )}
                     </td>
                     <td className="p-4">
                       <div className="flex flex-wrap gap-1.5 text-[10px]">

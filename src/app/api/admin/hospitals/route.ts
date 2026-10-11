@@ -13,13 +13,17 @@ export async function GET(req: NextRequest) {
     dbHospitals = await prisma.hospital.findMany({
       where: search ? {
         OR: [
-          { name: { contains: search } },
-          { registrationNo: { contains: search } },
-          { city: { contains: search } },
-          { email: { contains: search } }
+          { name: { contains: search, mode: 'insensitive' } },
+          { registrationNo: { contains: search, mode: 'insensitive' } },
+          { city: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } }
         ]
       } : {},
       include: {
+        users: {
+          where: { role: 'HOSPITAL_ADMIN' },
+          select: { id: true, name: true, email: true }
+        },
         _count: {
           select: {
             users: true,

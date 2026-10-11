@@ -65,6 +65,8 @@ export default function LandingPage() {
     prescriptions: '32K+',
     labReports: '14K+'
   });
+  const [publicHospitals, setPublicHospitals] = useState<any[]>([]);
+  const [hospitalsLoading, setHospitalsLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/admin/system/metrics')
@@ -82,6 +84,16 @@ export default function LandingPage() {
         }
       })
       .catch(err => console.error(err));
+
+    fetch('/api/hospitals')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.hospitals && Array.isArray(data.hospitals)) {
+          setPublicHospitals(data.hospitals);
+        }
+      })
+      .catch(err => console.error(err))
+      .finally(() => setHospitalsLoading(false));
   }, []);
 
   const handleQuickRoleLogin = (demoEmail: string, roleRedirect: string) => {
@@ -584,21 +596,37 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* 6. TRUSTED PARTNER BRANDS & FOOTER BANNER */}
+        {/* 6. REGISTERED NETWORK HOSPITALS & FOOTER BANNER */}
         <section className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="space-y-3">
-            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">
-              Trusted by Healthcare Professionals Across the Country
-            </span>
-            <div className="flex flex-wrap items-center gap-6 text-xs font-bold text-slate-400">
-              <span>Apollo Hospitals</span>
-              <span>MAX Healthcare</span>
-              <span>Fortis</span>
-              <span>Medanta</span>
-              <span>Narayana Health</span>
-              <span>CARE Hospitals</span>
-              <span>Manipal Hospitals</span>
+          <div className="space-y-3 flex-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-widest block">
+                🏥 Connected Network Hospitals ({publicHospitals.length} Active Organizations)
+              </span>
+              <Link href="/hospitals" className="text-[11px] font-extrabold text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                View Full Directory <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
+            {hospitalsLoading ? (
+              <p className="text-xs text-slate-400">Loading verified network hospitals...</p>
+            ) : publicHospitals.length === 0 ? (
+              <p className="text-xs text-slate-400">No active hospitals registered yet.</p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3 text-xs font-extrabold text-slate-700">
+                {publicHospitals.slice(0, 8).map((h) => (
+                  <Link
+                    key={h.id}
+                    href="/hospitals"
+                    className="px-3.5 py-1.5 bg-slate-50 hover:bg-blue-50 border border-slate-200 hover:border-blue-300 rounded-xl transition-all flex items-center gap-2 group"
+                  >
+                    <Building2 className="w-3.5 h-3.5 text-blue-600 group-hover:scale-110 transition-transform" />
+                    <span>{h.name}</span>
+                    <span className="text-[10px] font-normal text-slate-400">({h.city})</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" title="Active Network Hospital" />
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="shrink-0 space-y-2 text-right">
