@@ -210,8 +210,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const login = (newToken: string, newUser: UserContext) => {
+    // Avoid storing auth tokens in localStorage to use secure HTTP-only cookies
     if (typeof window !== 'undefined') {
-      localStorage.setItem('nexo_jwt', newToken);
+      localStorage.removeItem('nexo_jwt');
     }
     setToken(newToken);
     setUser(sanitizeUser(newUser));
@@ -228,8 +229,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateUser = (updatedData: Partial<UserContext>, newToken?: string) => {
-    if (newToken && typeof window !== 'undefined') {
-      localStorage.setItem('nexo_jwt', newToken);
+    if (newToken) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('nexo_jwt');
+      }
       setToken(newToken);
     }
     setUser(prev => (prev ? sanitizeUser({ ...prev, ...updatedData }) : null));

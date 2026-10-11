@@ -48,6 +48,7 @@ export default function AdminDashboardPage() {
     setLoading(true);
     const jwt = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
     fetch(`/api/admin/platform-analytics?period=${selectedPeriod}`, {
+      credentials: 'include',
       headers: jwt ? { Authorization: `Bearer ${jwt}` } : {}
     })
       .then(res => res.json())

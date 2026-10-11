@@ -102,7 +102,7 @@ export default function AdminHospitalsPage() {
       } catch (e) {}
     }
 
-    fetch(`/api/admin/hospitals?q=${encodeURIComponent(q)}`, { headers })
+    fetch(`/api/admin/hospitals?q=${encodeURIComponent(q)}`, { headers, credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         const serverList = data.hospitals || [];
@@ -190,6 +190,7 @@ export default function AdminHospitalsPage() {
       const res = await fetch('/api/admin/hospitals', {
         method: 'POST',
         headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify(addFormData)
       });
       const data = await res.json();
@@ -226,6 +227,7 @@ export default function AdminHospitalsPage() {
       const res = await fetch('/api/admin/hospitals', {
         method: 'PUT',
         headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({
           hospitalId: myHospital.id,
           ...profileForm
@@ -254,6 +256,7 @@ export default function AdminHospitalsPage() {
       const res = await fetch('/api/admin/hospitals', {
         method: 'PUT',
         headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify({ hospitalId, status: newStatus })
       });
       if (!res.ok) {
