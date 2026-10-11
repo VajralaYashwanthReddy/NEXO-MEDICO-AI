@@ -84,12 +84,21 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Test 3: Existing prisma instance from @/lib/prisma
+  // Test 4: pg.Client direct test
   try {
-    const c = await prisma.hospital.count();
-    results.prismaTests.sharedPrisma = { ok: true, count: c };
-  } catch (e: any) {
-    results.prismaTests.sharedPrisma = { ok: false, error: e.message };
+    const { Client } = require('pg');
+    const client = new Client({
+      connectionString: rawDbUrl || rawDirectUrl,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 10000
+    });
+    const t0 = Date.now();
+    await client.connect();
+    const pgRes = await client.query('SELECT count(*) as count FROM "Hospital"');
+    await client.end();
+    results.pgTest = { ok: true, count: pgRes.rows[0]?.count, timeMs: Date.now() - t0 };
+  } catch (pgErr: any) {
+    results.pgTest = { ok: false, error: pgErr.message, code: pgErr.code, routine: pgErr.routine };
   }
 
   return NextResponse.json(results);
