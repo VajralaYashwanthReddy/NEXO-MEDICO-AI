@@ -215,42 +215,64 @@ export function VisualCaptcha({
 }
 
 // ----------------------------------------------------
-// Mock 2FA OTP Modal Component
+// Secure 2FA / Registration OTP Modal Component
 // ----------------------------------------------------
-interface MockOtpModalProps {
+export interface MockOtpModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess?: (code?: string) => void | Promise<void>;
+  onVerify?: (code: string) => void | Promise<void>;
+  onResend?: () => void | Promise<void>;
   destinationText: string;
   title?: string;
+  subtitle?: string;
   loading?: boolean;
+  error?: string;
+  isDemo?: boolean;
+  demoOtpCode?: string;
 }
 
 export function MockOtpModal({
   isOpen,
   onClose,
   onSuccess,
+  onVerify,
+  onResend,
   destinationText,
-  title = '2FA Security Code Verification',
-  loading = false
+  title = 'Two-Factor Authentication',
+  subtitle,
+  loading = false,
+  error: externalError,
+  isDemo = false,
+  demoOtpCode
 }: MockOtpModalProps) {
-  const [mockOtpCode, setMockOtpCode] = useState('');
   const [otpInput, setOtpInput] = useState(['', '', '', '', '', '']);
-  const [copied, setCopied] = useState(false);
   const [timer, setTimer] = useState(60);
   const [otpError, setOtpError] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resendNotice, setResendNotice] = useState('');
+  const [copied, setCopied] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
     if (isOpen) {
-      const generated = generateMockOtp();
-      setMockOtpCode(generated);
       setOtpInput(['', '', '', '', '', '']);
       setOtpError('');
+      setResendNotice('');
       setTimer(60);
       setCopied(false);
+      // Autofocus first input box
+      setTimeout(() => {
+        inputRefs.current[0]?.focus();
+      }, 100);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (externalError) {
+      setOtpError(externalError);
+    }
+  }, [externalError]);
 
   useEffect(() => {
     if (!isOpen || timer <= 0) return;
@@ -261,157 +283,265 @@ export function MockOtpModal({
   if (!isOpen) return null;
 
   const handleDigitChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-    const newOtp = [...otpInput];
-    newOtp[index] = value.slice(-1);
-    setOtpInput(newOtp);
+    const clean = value.replace(/\D/g, '');
+    if (!clean && value !== '') return;
 
-    // Auto-advance
-    if (value && index < 5) {
+    const newOtp = [...otpInput];
+    newOtp[index] = clean.slice(-1);
+    setOtpInput(newOtp);
+    setOtpError('');
+
+    // Auto-advance to next box
+    if (clean && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otpInput[index] && index > 0) {
+    if (e.key === 'Backspace') {
+      if (!otpInput[index] && index > 0) {
+        inputRefs.current[index - 1]?.focus();
+      } else {
+        const newOtp = [...otpInput];
+        newOtp[index] = '';
+        setOtpInput(newOtp);
+      }
+    } else if (e.key === 'ArrowLeft' && index > 0) {
       inputRefs.current[index - 1]?.focus();
+    } else if (e.key === 'ArrowRight' && index < 5) {
+      inputRefs.current[index + 1]?.focus();
     }
   };
 
-  const handleAutoFill = () => {
-    if (!mockOtpCode) return;
-    const digits = mockOtpCode.split('');
-    setOtpInput(digits);
-    setOtpError('');
-  };
-
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(mockOtpCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleVerify = (e: React.FormEvent) => {
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').trim().replace(/\D/g, '');
+    if (!pastedData) return;
+
+    const digits = pastedData.slice(0, 6).split('');
+    const newOtp = ['', '', '', '', '', ''];
+    digits.forEach((d, idx) => {
+      if (idx < 6) newOtp[idx] = d;
+    });
+    setOtpInput(newOtp);
+    setOtpError('');
+
+    const focusIndex = Math.min(digits.length, 5);
+    inputRefs.current[focusIndex]?.focus();
+  };
+
+  const handleVerify = async (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const entered = otpInput.join('');
     if (entered.length < 6) {
       setOtpError('Please enter all 6 digits of the verification code.');
       return;
     }
 
-    if (entered !== mockOtpCode) {
-      setOtpError('Invalid OTP code. Please check the code provided above.');
-      return;
-    }
-
     setOtpError('');
-    onSuccess();
+
+    if (onVerify) {
+      await onVerify(entered);
+    } else if (onSuccess) {
+      if (isDemo && demoOtpCode && entered !== demoOtpCode) {
+        setOtpError('Invalid verification code. Please check code and try again.');
+        return;
+      }
+      await onSuccess(entered);
+    }
   };
 
-  const resendCode = () => {
-    const newCode = generateMockOtp();
-    setMockOtpCode(newCode);
-    setOtpInput(['', '', '', '', '', '']);
-    setTimer(60);
+  const handleResendClick = async () => {
+    if (timer > 0 || resending) return;
+    setResending(true);
     setOtpError('');
+    try {
+      if (onResend) {
+        await onResend();
+      }
+      setTimer(60);
+      setOtpInput(['', '', '', '', '', '']);
+      inputRefs.current[0]?.focus();
+      setResendNotice(`A new 6-digit code was sent to ${destinationText}.`);
+      setTimeout(() => setResendNotice(''), 4500);
+    } catch (err: any) {
+      setOtpError(err.message || 'Failed to resend code. Please try again.');
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const handleAutoFillDemo = () => {
+    if (!demoOtpCode) return;
+    const digits = demoOtpCode.split('').slice(0, 6);
+    setOtpInput(digits);
+    setOtpError('');
+    inputRefs.current[5]?.focus();
+  };
+
+  const handleCopyDemo = () => {
+    if (!demoOtpCode) return;
+    navigator.clipboard.writeText(demoOtpCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
-      <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl relative text-white space-y-5 select-none">
+      <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl p-6 sm:p-7 shadow-2xl relative text-white space-y-5 select-none">
         
         <button
           onClick={onClose}
           type="button"
-          className="absolute right-4 top-4 p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          disabled={loading}
+          className="absolute right-4 top-4 p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+          title="Close"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="text-center space-y-1.5">
-          <div className="inline-flex p-3 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20 mb-1">
+        <div className="text-center space-y-2">
+          <div className="inline-flex p-3 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/25 mb-1">
             <ShieldCheck className="w-7 h-7 text-white" />
           </div>
           <h3 className="text-xl font-black tracking-tight text-white">{title}</h3>
-          <p className="text-xs text-slate-400">
-            For security, a 6-digit authentication code was issued for <span className="text-cyan-300 font-medium">{destinationText}</span>.
+          <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+            {subtitle || (
+              <>
+                For institutional security, a 6-digit code was dispatched to{' '}
+                <span className="text-cyan-300 font-semibold">{destinationText}</span>.
+                <span className="block mt-1 text-[11px] text-slate-400">
+                  Please check your email inbox and Spam/Junk folder.
+                </span>
+              </>
+            )}
           </p>
         </div>
 
-        {/* Mock OTP Display Card */}
-        <div className="p-3.5 bg-cyan-950/50 border border-cyan-800/80 rounded-2xl space-y-2 text-center">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" /> Mock 2FA Code (Demo & Live)
-            </span>
+        {/* Optional Demo Card (Only rendered when explicitly flagged as demo) */}
+        {isDemo && demoOtpCode && (
+          <div className="p-3.5 bg-cyan-950/50 border border-cyan-800/80 rounded-2xl space-y-2 text-center">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" /> Demo Account Access
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyDemo}
+                className="text-[11px] text-cyan-400 hover:text-cyan-200 font-semibold flex items-center gap-1 cursor-pointer"
+              >
+                <Copy className="w-3 h-3" /> {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <div className="text-2xl font-mono font-black tracking-widest text-cyan-200 bg-slate-950/80 py-2 rounded-xl border border-cyan-900/60 shadow-inner">
+              {demoOtpCode}
+            </div>
             <button
               type="button"
-              onClick={handleCopyCode}
-              className="text-[11px] text-cyan-400 hover:text-cyan-200 font-semibold flex items-center gap-1"
+              onClick={handleAutoFillDemo}
+              className="w-full py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold rounded-lg transition-all border border-cyan-500/30 flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              <Copy className="w-3 h-3" /> {copied ? 'Copied!' : 'Copy Code'}
+              <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" /> Auto-Fill Demo Code
             </button>
           </div>
-          <div className="text-2xl font-mono font-black tracking-widest text-cyan-200 bg-slate-950/80 py-2 rounded-xl border border-cyan-900/60 shadow-inner">
-            {mockOtpCode}
-          </div>
-          <button
-            type="button"
-            onClick={handleAutoFill}
-            className="w-full py-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold rounded-lg transition-all border border-cyan-500/30 flex items-center justify-center gap-1.5"
-          >
-            <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" /> Auto-Fill 6-Digit Code
-          </button>
-        </div>
+        )}
 
-        {/* OTP Input Form */}
-        <form onSubmit={handleVerify} className="space-y-4">
-          <div className="flex justify-between gap-2">
+        {/* 6-Box OTP Input Container */}
+        <div className="space-y-4">
+          <div className="flex justify-between gap-2 sm:gap-2.5">
             {otpInput.map((digit, idx) => (
               <input
                 key={idx}
                 ref={(el) => { inputRefs.current[idx] = el; }}
                 type="text"
                 inputMode="numeric"
+                pattern="[0-9]*"
                 maxLength={1}
                 value={digit}
+                onPaste={handlePaste}
                 onChange={(e) => handleDigitChange(idx, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(idx, e)}
-                className="w-12 h-13 text-center text-xl font-bold font-mono bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all shadow-inner"
+                onKeyDown={(e) => {
+                  handleKeyDown(idx, e);
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleVerify(e);
+                  }
+                }}
+                className={`w-11 sm:w-12 h-13 text-center text-xl font-bold font-mono rounded-xl text-white transition-all shadow-inner focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                  digit
+                    ? 'bg-cyan-950/60 border-2 border-cyan-500 text-cyan-200'
+                    : 'bg-slate-950 border border-slate-800'
+                }`}
+                disabled={loading}
               />
             ))}
           </div>
 
+          {resendNotice && (
+            <p className="text-xs text-cyan-300 text-center font-medium bg-cyan-950/60 border border-cyan-800 p-2 rounded-xl">
+              ✓ {resendNotice}
+            </p>
+          )}
+
           {otpError && (
-            <p className="text-xs text-rose-400 text-center font-medium bg-rose-950/60 border border-rose-800 p-2 rounded-xl">
+            <p className="text-xs text-rose-400 text-center font-medium bg-rose-950/60 border border-rose-800 p-2.5 rounded-xl">
               ⚠️ {otpError}
             </p>
           )}
 
+          {/* Resend Cooldown Counter */}
           <div className="flex items-center justify-between text-xs text-slate-400 font-medium px-1">
             <span>Didn't receive code?</span>
             {timer > 0 ? (
-              <span className="text-slate-500 font-mono">Resend in {timer}s</span>
+              <span className="text-slate-500 font-mono flex items-center gap-1">
+                ⏱️ Resend in <span className="text-cyan-400 font-bold">{timer}s</span>
+              </span>
             ) : (
               <button
                 type="button"
-                onClick={resendCode}
-                className="text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
+                onClick={handleResendClick}
+                disabled={resending || loading}
+                className="text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer disabled:opacity-50"
               >
-                Resend Code
+                {resending ? 'Sending...' : 'Resend Code via Email'}
               </button>
             )}
           </div>
 
+          {/* Submit Action */}
           <button
-            type="submit"
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleVerify(e);
+            }}
             disabled={loading}
-            className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+            className="w-full py-3.5 bg-gradient-to-r from-teal-500 via-cyan-600 to-blue-600 hover:from-teal-600 hover:to-blue-700 text-white font-black text-sm rounded-xl shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] disabled:opacity-50"
           >
-            {loading ? 'Verifying & Completing...' : 'Verify OTP & Authorize'}
+            {loading ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-1"></span>
+                Verifying Code...
+              </>
+            ) : (
+              'Verify Code & Authorize'
+            )}
           </button>
-        </form>
+
+          <p className="text-[11px] text-slate-500 text-center font-medium">
+            🔒 Code expires in 5 minutes • Strictly 1-time use
+          </p>
+        </div>
       </div>
     </div>
   );
 }
+
+// Alias export for modern nomenclature
+export const SecureOtpModal = MockOtpModal;
+

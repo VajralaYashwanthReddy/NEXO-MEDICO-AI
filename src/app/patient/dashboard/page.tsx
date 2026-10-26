@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
   UserCheck,
@@ -8,11 +9,13 @@ import {
   Pill,
   FlaskConical,
   Calendar,
+  Calendar as CalendarIcon,
   Award,
   Activity,
   BedDouble,
   FileText,
   AlertTriangle,
+  AlertCircle,
   Building2,
   CheckCircle2,
   Sparkles,
@@ -26,14 +29,63 @@ import {
   Cpu,
   RefreshCw,
   Search,
-  BookOpen
+  BookOpen,
+  QrCode
 } from 'lucide-react';
 
+import { useRealtimeAppointments } from '@/hooks/useRealtimeAppointments';
+import { PatientEmergencyQrCard } from '@/components/PatientEmergencyQrCard';
+
 export default function PatientDashboard() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [patientTimeline, setPatientTimeline] = useState<any>(null);
   const [loadingTimeline, setLoadingTimeline] = useState(true);
-  const [activeTab, setActiveTab] = useState<'timeline' | 'ai-assistant' | 'prescriptions' | 'labs' | 'icu' | 'health-score'>('timeline');
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'timeline' | 'appointments' | 'ai-assistant' | 'prescriptions' | 'labs' | 'icu' | 'health-score' | 'emergency-qr'>('timeline');
+
+  // 1. Single stable authentication check & redirect
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [authLoading, user, router]);
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['timeline', 'appointments', 'ai-assistant', 'prescriptions', 'labs', 'icu', 'health-score', 'emergency-qr'].includes(tabParam)) {
+      setActiveTab(tabParam as any);
+    }
+  }, [searchParams]);
+
+  // Patient Appointments State
+  const [patientAppointments, setPatientAppointments] = useState<any[]>([]);
+  const [loadingAppointments, setLoadingAppointments] = useState(false);
+  const [hospitalsList, setHospitalsList] = useState<any[]>([]);
+  const [doctorsList, setDoctorsList] = useState<any[]>([]);
+  const [bookingHospitalId, setBookingHospitalId] = useState('');
+  const [bookingDepartmentId, setBookingDepartmentId] = useState('ALL');
+  const [bookingDoctorId, setBookingDoctorId] = useState('');
+  const [bookingDate, setBookingDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [bookingTimeSlot, setBookingTimeSlot] = useState('');
+  const [bookingVisitType, setBookingVisitType] = useState('IN_PERSON');
+  const [bookingType, setBookingType] = useState('GENERAL');
+  const [bookingReason, setBookingReason] = useState('');
+  const [availableSlots, setAvailableSlots] = useState<any[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [submittingBooking, setSubmittingBooking] = useState(false);
+  const [appointmentFeedback, setAppointmentFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Reschedule & Cancel state
+  const [selectedAptForAction, setSelectedAptForAction] = useState<any | null>(null);
+  const [patientActionModal, setPatientActionModal] = useState<'reschedule' | 'cancel' | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleTimeSlot, setRescheduleTimeSlot] = useState('');
+  const [rescheduleSlots, setRescheduleSlots] = useState<any[]>([]);
+  const [loadingRescheduleSlots, setLoadingRescheduleSlots] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [executingAction, setExecutingAction] = useState(false);
 
   // AI Assistant Chat State
   const [aiPrompt, setAiPrompt] = useState('');
@@ -69,74 +121,297 @@ export default function PatientDashboard() {
   });
   const [calculating, setCalculating] = useState(false);
 
-  const fetchTimeline = () => {
+  // 2. Fetch Timeline & Health Passport with stable dependencies and AbortController
+  const fetchTimeline = useCallback(async (signal?: AbortSignal) => {
+    if (!user) return;
     setLoadingTimeline(true);
-    const localSavedStr = typeof window !== 'undefined' ? localStorage.getItem('nexo_custom_registered_patients') : null;
-    let localPatients: any[] = [];
-    if (localSavedStr) {
-      try { localPatients = JSON.parse(localSavedStr); } catch (e) {}
-    }
+    setTimelineError(null);
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
-    if (localPatients.length > 0) {
-      try {
-        headers['x-client-patients'] = encodeURIComponent(JSON.stringify(localPatients));
-      } catch (e) {}
-    }
+    try {
+      // 1. Direct authenticated patient timeline endpoint (single high-performance call)
+      const res = await fetch('/api/patient/timeline', {
+        headers: { 'Content-Type': 'application/json' },
+        signal
+      });
 
-    fetch('/api/patients?global=true', { headers })
-      .then(r => r.json())
-      .then(d => {
-        const serverPatients = (d.patients && Array.isArray(d.patients)) ? d.patients : [];
-        const allPatients = [...serverPatients, ...localPatients];
+      if (res.ok) {
+        const data = await res.json();
+        if (data.patientTimeline) {
+          setPatientTimeline(data.patientTimeline);
+          return;
+        }
+      }
 
-        const userEmailLower = user?.email?.toLowerCase();
-        const target = allPatients.find((p: any) =>
-          (userEmailLower && p.email?.toLowerCase() === userEmailLower) ||
-          (userEmailLower && p.user?.email?.toLowerCase() === userEmailLower) ||
-          (p.userId && p.userId === user?.id) ||
-          (user?.patientCode && p.patientCode === user.patientCode)
-        );
+      // 2. Fallback to /api/patients
+      const pRes = await fetch('/api/patients', {
+        headers: { 'Content-Type': 'application/json' },
+        signal
+      });
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        const serverPatients = Array.isArray(pData.patients) ? pData.patients : [];
+        const uEmail = user.email?.toLowerCase();
+        const target = serverPatients.find((p: any) =>
+          (uEmail && p.email?.toLowerCase() === uEmail) ||
+          (p.userId && p.userId === user.id) ||
+          ((user as any).patientCode && p.patientCode === (user as any).patientCode)
+        ) || serverPatients[0];
 
         if (target) {
-          fetch(`/api/patients/${target.id}/timeline`)
-            .then(r => r.json())
-            .then(t => setPatientTimeline({ ...target, ...(t.patientTimeline || {}) }))
-            .catch(() => setPatientTimeline(target));
-        } else {
-          setPatientTimeline({
-            id: user?.id || 'pat-user-01',
-            fullName: user?.name || 'Registered Patient',
-            email: user?.email || '',
-            gender: user?.gender || 'N/A',
-            dob: user?.dob || 'N/A',
-            phone: user?.phone || 'N/A',
-            bloodGroup: user?.bloodGroup || 'N/A',
-            patientCode: user?.patientCode || 'N/A'
-          });
+          try {
+            const tRes = await fetch(`/api/patients/${target.id}/timeline`, { signal });
+            if (tRes.ok) {
+              const tData = await tRes.json();
+              setPatientTimeline({ ...target, ...(tData.patientTimeline || {}) });
+              return;
+            }
+          } catch (e) {}
+          setPatientTimeline(target);
+          return;
         }
-      })
-      .catch(err => {
-        console.error(err);
-        setPatientTimeline({
-          id: user?.id || 'pat-user-01',
-          fullName: user?.name || 'Registered Patient',
-          email: user?.email || '',
-          gender: user?.gender || 'N/A',
-          dob: user?.dob || 'N/A',
-          phone: user?.phone || 'N/A',
-          bloodGroup: user?.bloodGroup || 'N/A',
-          patientCode: user?.patientCode || 'N/A'
-        });
-      })
-      .finally(() => setLoadingTimeline(false));
-  };
+      }
+
+      // 3. Fallback baseline profile
+      setPatientTimeline({
+        id: user.id,
+        fullName: user.name || 'Registered Patient',
+        email: user.email || '',
+        gender: (user as any).gender || 'N/A',
+        dob: (user as any).dob || 'N/A',
+        phone: (user as any).phone || 'N/A',
+        bloodGroup: (user as any).bloodGroup || 'N/A',
+        patientCode: (user as any).patientCode || 'N/A',
+        medicalRecords: [],
+        appointments: [],
+        prescriptions: [],
+        labOrders: [],
+        admissions: []
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      console.error('Failed to fetch patient timeline:', err);
+      setTimelineError(err.message || 'Unable to load patient records. Please verify connection.');
+      setPatientTimeline((prev: any) => prev || {
+        id: user.id,
+        fullName: user.name || 'Registered Patient',
+        email: user.email || '',
+        gender: (user as any).gender || 'N/A',
+        dob: (user as any).dob || 'N/A',
+        phone: (user as any).phone || 'N/A',
+        bloodGroup: (user as any).bloodGroup || 'N/A',
+        patientCode: (user as any).patientCode || 'N/A',
+        medicalRecords: [],
+        appointments: [],
+        prescriptions: [],
+        labOrders: [],
+        admissions: []
+      });
+    } finally {
+      setLoadingTimeline(false);
+    }
+  }, [user?.id, user?.email, (user as any)?.patientCode]);
+
+  // 3. Fetch patient's appointments
+  const fetchPatientAppointments = useCallback(async (signal?: AbortSignal) => {
+    setLoadingAppointments(true);
+    try {
+      const res = await fetch('/api/appointments', { signal });
+      const data = await res.json();
+      if (res.ok) {
+        setPatientAppointments(data.appointments || []);
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') console.error('Error fetching patient appointments:', e);
+    } finally {
+      setLoadingAppointments(false);
+    }
+  }, []);
+
+  // 4. Fetch Hospitals & Doctors for Booking Form (stable callback with functional state updates)
+  const fetchBookingResources = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const [hospRes, docRes] = await Promise.all([
+        fetch('/api/hospitals', { signal }),
+        fetch('/api/doctors', { signal })
+      ]);
+      const hospData = await hospRes.json();
+      const docData = await docRes.json();
+
+      const hosps = hospData.hospitals || [];
+      const docs = docData.doctors || [];
+      setHospitalsList(hosps);
+      setDoctorsList(docs);
+
+      setBookingHospitalId(prev => prev || (hosps[0]?.id || ''));
+      setBookingDoctorId(prev => prev || (docs[0]?.user?.id || docs[0]?.userId || docs[0]?.id || ''));
+    } catch (e: any) {
+      if (e.name !== 'AbortError') console.error('Error fetching booking resources:', e);
+    }
+  }, []);
+
+  // 5. Predictable Master Initial Load: runs ONCE when user id is available
+  useEffect(() => {
+    if (!user) return;
+    const controller = new AbortController();
+    fetchTimeline(controller.signal);
+    fetchPatientAppointments(controller.signal);
+    fetchBookingResources(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, [user?.id, fetchTimeline, fetchPatientAppointments, fetchBookingResources]);
+
+  // Real-time synchronization for patient appointment updates
+  useRealtimeAppointments({
+    hospitalId: user?.hospitalId,
+    onRefreshNeeded: fetchPatientAppointments
+  });
+
+  // Load available slots when doctor or date changes
+  const loadDoctorSlots = useCallback(async (docId: string, date: string, signal?: AbortSignal) => {
+    if (!docId || !date) return;
+    setLoadingSlots(true);
+    try {
+      const res = await fetch(`/api/appointments/slots?doctorId=${docId}&date=${date}`, { signal });
+      const data = await res.json();
+      if (res.ok) {
+        setAvailableSlots((data.slots || []).filter((s: any) => s.available));
+      } else {
+        setAvailableSlots([]);
+      }
+    } catch (e: any) {
+      if (e.name !== 'AbortError') setAvailableSlots([]);
+    } finally {
+      setLoadingSlots(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetchTimeline();
-  }, [user]);
+    if (bookingDoctorId && bookingDate) {
+      const controller = new AbortController();
+      loadDoctorSlots(bookingDoctorId, bookingDate, controller.signal);
+      return () => controller.abort();
+    }
+  }, [bookingDoctorId, bookingDate, loadDoctorSlots]);
+
+  // Load reschedule slots
+  const loadRescheduleSlots = async (docId: string, date: string) => {
+    if (!docId || !date) return;
+    setLoadingRescheduleSlots(true);
+    try {
+      const res = await fetch(`/api/appointments/slots?doctorId=${docId}&date=${date}`);
+      const data = await res.json();
+      if (res.ok) {
+        setRescheduleSlots((data.slots || []).filter((s: any) => s.available));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingRescheduleSlots(false);
+    }
+  };
+
+  // Submit Patient Appointment Booking
+  const handleBookAppointment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bookingDoctorId || !bookingDate || !bookingTimeSlot) return;
+
+    setSubmittingBooking(true);
+    setAppointmentFeedback(null);
+    try {
+      const res = await fetch('/api/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          doctorId: bookingDoctorId,
+          hospitalId: bookingHospitalId,
+          date: bookingDate,
+          timeSlot: bookingTimeSlot,
+          visitType: bookingVisitType,
+          type: bookingType,
+          reason: bookingReason || 'General Medical Consultation'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to book appointment');
+
+      setAppointmentFeedback({
+        type: 'success',
+        text: `Appointment confirmed! Reference Code: ${data.appointment?.appointmentCode}. Please arrive 10 minutes before ${bookingTimeSlot}.`
+      });
+      setBookingReason('');
+      setBookingTimeSlot('');
+      fetchPatientAppointments();
+      if (bookingDoctorId && bookingDate) loadDoctorSlots(bookingDoctorId, bookingDate);
+    } catch (err: any) {
+      setAppointmentFeedback({ type: 'error', text: err.message });
+    } finally {
+      setSubmittingBooking(false);
+    }
+  };
+
+  // Patient Reschedule Execution
+  const handlePatientReschedule = async () => {
+    if (!selectedAptForAction || !rescheduleDate || !rescheduleTimeSlot) return;
+    setExecutingAction(true);
+    setAppointmentFeedback(null);
+    try {
+      const res = await fetch(`/api/appointments/${selectedAptForAction.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reschedule',
+          newDate: rescheduleDate,
+          newTimeSlot: rescheduleTimeSlot,
+          reason: 'Patient self-service reschedule'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to reschedule');
+      setAppointmentFeedback({
+        type: 'success',
+        text: `Appointment successfully rescheduled to ${rescheduleDate} at ${rescheduleTimeSlot}.`
+      });
+      setPatientActionModal(null);
+      setSelectedAptForAction(null);
+      fetchPatientAppointments();
+    } catch (err: any) {
+      setAppointmentFeedback({ type: 'error', text: err.message });
+    } finally {
+      setExecutingAction(false);
+    }
+  };
+
+  // Patient Cancel Execution
+  const handlePatientCancel = async () => {
+    if (!selectedAptForAction) return;
+    setExecutingAction(true);
+    setAppointmentFeedback(null);
+    try {
+      const res = await fetch(`/api/appointments/${selectedAptForAction.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'cancel',
+          reason: cancelReason || 'Patient self-cancellation'
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to cancel appointment');
+      setAppointmentFeedback({
+        type: 'success',
+        text: 'Appointment cancelled and time slot released successfully.'
+      });
+      setPatientActionModal(null);
+      setSelectedAptForAction(null);
+      fetchPatientAppointments();
+    } catch (err: any) {
+      setAppointmentFeedback({ type: 'error', text: err.message });
+    } finally {
+      setExecutingAction(false);
+    }
+  };
 
   // AI Assistant Query Handler
   const handleSendAiMessage = async (e: React.FormEvent) => {
@@ -225,7 +500,51 @@ export default function PatientDashboard() {
     }
   };
 
-  if (loadingTimeline) {
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-cyan-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-xs text-slate-500 font-extrabold uppercase tracking-widest">
+            Validating Patient Session...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-cyan-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-xs text-slate-500 font-extrabold uppercase tracking-widest">
+            Redirecting to sign-in...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user.role !== 'PATIENT' && user.role !== 'SUPER_ADMIN') {
+    return (
+      <div className="max-w-xl mx-auto my-12 p-8 bg-white rounded-3xl border border-amber-200 shadow-xl text-center">
+        <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+        <h2 className="text-xl font-black text-slate-900 mb-2">Patient Access Restricted</h2>
+        <p className="text-sm text-slate-600 mb-6">
+          This portal is reserved for registered patients. Your current active account role is <strong className="text-indigo-600 uppercase">{user.role}</strong>.
+        </p>
+        <button
+          onClick={() => router.push(user.role === 'DOCTOR' ? '/doctor/appointments' : user.role === 'HOSPITAL_ADMIN' ? '/admin/hospitals' : '/')}
+          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition-all text-sm"
+        >
+          Go to {user.role.replace('_', ' ')} Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  if (loadingTimeline && !patientTimeline) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
@@ -234,6 +553,22 @@ export default function PatientDashboard() {
             Loading Universal Patient Health Passport & AI Engines...
           </p>
         </div>
+      </div>
+    );
+  }
+
+  if (timelineError && !patientTimeline) {
+    return (
+      <div className="max-w-xl mx-auto my-12 p-8 bg-white rounded-3xl border border-rose-200 shadow-xl text-center">
+        <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
+        <h2 className="text-xl font-black text-slate-900 mb-2">Unable to Load Patient Profile</h2>
+        <p className="text-sm text-slate-600 mb-6">{timelineError}</p>
+        <button
+          onClick={() => fetchTimeline()}
+          className="px-6 py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-xl shadow-md transition-all text-sm inline-flex items-center gap-2"
+        >
+          <RefreshCw className="w-4 h-4" /> Retry
+        </button>
       </div>
     );
   }
@@ -273,6 +608,13 @@ export default function PatientDashboard() {
 
   return (
     <div className="space-y-6 text-slate-900 select-none max-w-7xl mx-auto">
+      {timelineError && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-2xl text-xs flex items-center justify-between">
+          <span>Notice: Background synchronization error ({timelineError}). Displaying cached record.</span>
+          <button onClick={() => fetchTimeline()} className="text-xs font-bold underline ml-2">Retry</button>
+        </div>
+      )}
+
       {/* ----------------- 1. METALLIC UNIVERSAL PATIENT IDENTITY CARD ----------------- */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 p-6 sm:p-8 rounded-3xl text-white shadow-2xl border border-indigo-800/40 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl -z-0 pointer-events-none" />
@@ -325,6 +667,17 @@ export default function PatientDashboard() {
                 <span className="font-black text-white text-base">92.5 / 100 (A+)</span>
               </div>
             </div>
+
+            <button
+              onClick={() => setActiveTab('emergency-qr')}
+              className="p-3 bg-gradient-to-r from-cyan-600/80 to-indigo-600/80 hover:from-cyan-500 hover:to-indigo-500 border border-cyan-400/50 rounded-2xl text-xs flex items-center gap-3 transition-all shadow-lg shadow-cyan-900/30"
+            >
+              <QrCode className="w-5 h-5 text-cyan-300 shrink-0" />
+              <div className="text-left">
+                <span className="font-extrabold text-cyan-200 block text-[9px] uppercase tracking-wider">India Emergency ID</span>
+                <span className="font-black text-white text-xs">My Emergency QR ⚡</span>
+              </div>
+            </button>
           </div>
         </div>
 
@@ -352,6 +705,17 @@ export default function PatientDashboard() {
       {/* ----------------- 2. NAVIGATION TABS BAR ----------------- */}
       <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap gap-1">
         <button
+          onClick={() => setActiveTab('emergency-qr')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+            activeTab === 'emergency-qr'
+              ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white shadow-md'
+              : 'text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200/60 font-black'
+          }`}
+        >
+          <QrCode className="w-4 h-4 text-cyan-400" /> My Emergency QR ID
+        </button>
+
+        <button
           onClick={() => setActiveTab('timeline')}
           className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
             activeTab === 'timeline'
@@ -360,6 +724,17 @@ export default function PatientDashboard() {
           }`}
         >
           <FileText className="w-4 h-4" /> Cross-Hospital Medical Timeline
+        </button>
+
+        <button
+          onClick={() => setActiveTab('appointments')}
+          className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+            activeTab === 'appointments'
+              ? 'bg-cyan-600 text-white shadow-md'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <Calendar className="w-4 h-4" /> Appointments & Consultations ({patientAppointments.length})
         </button>
 
         <button
@@ -406,6 +781,419 @@ export default function PatientDashboard() {
           <HeartPulse className="w-4 h-4" /> Health Score Calculator
         </button>
       </div>
+
+      {/* ----------------- TAB: MY EMERGENCY QR ID ----------------- */}
+      {activeTab === 'emergency-qr' && (
+        <PatientEmergencyQrCard patientId={patientTimeline?.id} />
+      )}
+
+      {/* ----------------- TAB: APPOINTMENTS & CONSULTATION BOOKING ----------------- */}
+      {activeTab === 'appointments' && (
+        <div className="space-y-6">
+          {/* Feedback alert */}
+          {appointmentFeedback && (
+            <div
+              className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between ${
+                appointmentFeedback.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}
+            >
+              <span>{appointmentFeedback.text}</span>
+              <button onClick={() => setAppointmentFeedback(null)} className="font-mono text-xs">✕</button>
+            </div>
+          )}
+
+          {/* Booking Form Card */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b pb-4 gap-2">
+              <div>
+                <span className="text-[10px] font-extrabold text-cyan-600 uppercase tracking-widest block">
+                  🗓️ Hospital Outpatient Portal
+                </span>
+                <h3 className="text-xl font-black text-slate-900 mt-0.5">Book a Doctor Consultation</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Select your hospital, choose your specialist, pick from verified live open slots, and confirm your visit.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-cyan-700 bg-cyan-50 px-3 py-1 rounded-xl border border-cyan-200">
+                Direct Tenant Booking
+              </span>
+            </div>
+
+            <form onSubmit={handleBookAppointment} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. Select Hospital */}
+                <div>
+                  <label className="text-xs font-black text-slate-700 block mb-1.5">
+                    1. Select Hospital *
+                  </label>
+                  <select
+                    value={bookingHospitalId}
+                    onChange={(e) => setBookingHospitalId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white"
+                  >
+                    {hospitalsList.map(h => (
+                      <option key={h.id} value={h.id}>{h.name} ({h.city || 'Central'})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 2. Select Doctor */}
+                <div>
+                  <label className="text-xs font-black text-slate-700 block mb-1.5">
+                    2. Select Physician *
+                  </label>
+                  <select
+                    value={bookingDoctorId}
+                    onChange={(e) => setBookingDoctorId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white"
+                  >
+                    {doctorsList.map(d => (
+                      <option key={d.user?.id || d.id} value={d.user?.id || d.userId || d.id}>
+                        {d.user?.name || d.name} — {d.specialization} ({d.department?.name || 'General'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 3. Select Consultation Date */}
+                <div>
+                  <label className="text-xs font-black text-slate-700 block mb-1.5">
+                    3. Select Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    min={new Date().toISOString().split('T')[0]}
+                    value={bookingDate}
+                    onChange={(e) => setBookingDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Live Time Slots Picker */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-black text-slate-700">
+                    4. Available Time Slots for {bookingDate} *
+                  </label>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Verified real-time doctor availability
+                  </span>
+                </div>
+
+                {loadingSlots ? (
+                  <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                    <RefreshCw className="w-4 h-4 animate-spin text-cyan-600 mx-auto mb-1" />
+                    Querying doctor availability and live schedule...
+                  </div>
+                ) : availableSlots.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-amber-700 bg-amber-50 rounded-2xl border border-amber-200 font-bold">
+                    No available consultation slots for this physician on {bookingDate}. Please choose another date or doctor.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 max-h-48 overflow-y-auto p-1 bg-slate-50 rounded-2xl border border-slate-200">
+                    {availableSlots.map((s) => (
+                      <button
+                        key={s.timeSlot}
+                        type="button"
+                        onClick={() => setBookingTimeSlot(s.timeSlot)}
+                        className={`p-2 rounded-xl text-xs font-black transition-all border text-center ${
+                          bookingTimeSlot === s.timeSlot
+                            ? 'bg-gradient-to-r from-teal-500 to-cyan-600 text-white border-cyan-600 shadow-md scale-102'
+                            : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-200'
+                        }`}
+                      >
+                        {s.timeSlot}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 5. Appointment Type */}
+                <div>
+                  <label className="text-xs font-black text-slate-700 block mb-1.5">
+                    Appointment Type
+                  </label>
+                  <select
+                    value={bookingType}
+                    onChange={(e) => setBookingType(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white"
+                  >
+                    <option value="GENERAL">General Consultation</option>
+                    <option value="FOLLOW_UP">Follow-Up Review</option>
+                    <option value="ROUTINE">Routine Health Checkup</option>
+                    <option value="EMERGENCY">Urgent / Priority</option>
+                  </select>
+                </div>
+
+                {/* 6. Modality */}
+                <div>
+                  <label className="text-xs font-black text-slate-700 block mb-1.5">
+                    Consultation Modality
+                  </label>
+                  <select
+                    value={bookingVisitType}
+                    onChange={(e) => setBookingVisitType(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white"
+                  >
+                    <option value="IN_PERSON">In-Person at Hospital</option>
+                    <option value="TELECONSULTATION">Secure Teleconsultation</option>
+                  </select>
+                </div>
+
+                {/* 7. Reason for Visit */}
+                <div>
+                  <label className="text-xs font-black text-slate-700 block mb-1.5">
+                    Reason / Primary Symptoms *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Cough, checkup, chest pain, fever"
+                    value={bookingReason}
+                    onChange={(e) => setBookingReason(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs text-slate-900 bg-slate-50 focus:bg-white"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={submittingBooking || !bookingTimeSlot}
+                className="w-full py-3 bg-gradient-to-r from-teal-500 via-cyan-600 to-blue-600 hover:from-teal-600 hover:to-blue-700 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {submittingBooking ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Reserving Slot in Hospital Database...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" /> Confirm Appointment Booking ({bookingTimeSlot || 'Select Slot'})
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          {/* Patient's Existing Appointments List */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b pb-4">
+              <div>
+                <span className="text-[10px] font-extrabold text-blue-600 uppercase tracking-widest block">
+                  📋 Your Booking History
+                </span>
+                <h3 className="text-xl font-black text-slate-900 mt-0.5">My Scheduled & Past Appointments</h3>
+              </div>
+              <button
+                onClick={() => fetchPatientAppointments()}
+                className="text-xs font-bold text-cyan-700 hover:text-cyan-900 flex items-center gap-1"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh List
+              </button>
+            </div>
+
+            {loadingAppointments ? (
+              <div className="py-12 text-center text-xs text-slate-400">Loading your appointments...</div>
+            ) : patientAppointments.length === 0 ? (
+              <div className="py-12 text-center text-xs text-slate-400 space-y-1">
+                <CalendarIcon className="w-8 h-8 text-slate-300 mx-auto mb-1" />
+                <p className="font-bold text-slate-600">You have no scheduled appointments.</p>
+                <p className="text-slate-400">Use the form above to book a consultation with your doctor.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {patientAppointments.map((apt) => (
+                  <div key={apt.id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/80 px-2 rounded-2xl transition-colors">
+                    <div className="flex items-start gap-4">
+                      <div className="bg-cyan-50 border border-cyan-200 rounded-2xl p-3 text-center min-w-[80px]">
+                        <Clock className="w-4 h-4 text-cyan-600 mx-auto mb-0.5" />
+                        <span className="text-xs font-black text-cyan-900 block font-mono">{apt.timeSlot}</span>
+                        <span className="text-[10px] text-cyan-600 font-bold block">{apt.date}</span>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="font-mono text-[11px] font-black text-cyan-800 bg-cyan-100 px-2 py-0.5 rounded">
+                            {apt.appointmentCode}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            apt.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
+                            apt.status === 'IN_CONSULTATION' ? 'bg-amber-100 text-amber-800 animate-pulse' :
+                            apt.status === 'CHECKED_IN' ? 'bg-cyan-100 text-cyan-800' :
+                            apt.status === 'CONFIRMED' ? 'bg-blue-100 text-blue-800' :
+                            apt.status === 'CANCELLED' ? 'bg-rose-100 text-rose-800' :
+                            'bg-slate-100 text-slate-700'
+                          }`}>
+                            {apt.status}
+                          </span>
+                        </div>
+                        <h4 className="font-black text-slate-900 text-sm">
+                          Physician: {apt.doctor?.name || 'Assigned Specialist'}
+                        </h4>
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          <strong>Reason:</strong> {apt.reason}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Hospital: {apt.hospital?.name} • Department: {apt.department?.name || 'General Medicine'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Patient Actions */}
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                      {['BOOKED', 'CONFIRMED'].includes(apt.status) && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setSelectedAptForAction(apt);
+                              setRescheduleDate(apt.date);
+                              setRescheduleTimeSlot('');
+                              loadRescheduleSlots(apt.doctorId, apt.date);
+                              setPatientActionModal('reschedule');
+                            }}
+                            className="px-3 py-1.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-colors"
+                          >
+                            Reschedule
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedAptForAction(apt);
+                              setCancelReason('');
+                              setPatientActionModal('cancel');
+                            }}
+                            className="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-xs font-bold text-rose-700 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* PATIENT RESCHEDULE MODAL */}
+          {patientActionModal === 'reschedule' && selectedAptForAction && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+                <h3 className="text-base font-black text-slate-900">
+                  Reschedule Appointment {selectedAptForAction.appointmentCode}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Select a new date and open time slot for your consultation with {selectedAptForAction.doctor?.name}.
+                </p>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">New Date *</label>
+                  <input
+                    type="date"
+                    min={new Date().toISOString().split('T')[0]}
+                    value={rescheduleDate}
+                    onChange={(e) => {
+                      setRescheduleDate(e.target.value);
+                      loadRescheduleSlots(selectedAptForAction.doctorId, e.target.value);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Available Slots *</label>
+                  {loadingRescheduleSlots ? (
+                    <p className="text-xs text-slate-400 py-2">Loading slots...</p>
+                  ) : rescheduleSlots.length === 0 ? (
+                    <p className="text-xs text-amber-600 font-bold py-2">No open slots on this date.</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto p-1">
+                      {rescheduleSlots.map((s) => (
+                        <button
+                          key={s.timeSlot}
+                          type="button"
+                          onClick={() => setRescheduleTimeSlot(s.timeSlot)}
+                          className={`px-2.5 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                            rescheduleTimeSlot === s.timeSlot
+                              ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
+                          }`}
+                        >
+                          {s.timeSlot}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t">
+                  <button
+                    type="button"
+                    onClick={() => setPatientActionModal(null)}
+                    className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:text-slate-900"
+                  >
+                    Keep Current
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePatientReschedule}
+                    disabled={executingAction || !rescheduleDate || !rescheduleTimeSlot}
+                    className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs rounded-xl shadow-md disabled:opacity-50"
+                  >
+                    {executingAction ? 'Rescheduling...' : 'Confirm New Time'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PATIENT CANCEL MODAL */}
+          {patientActionModal === 'cancel' && selectedAptForAction && (
+            <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+                <h3 className="text-base font-black text-rose-600 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" /> Cancel Consultation
+                </h3>
+                <p className="text-xs text-slate-600">
+                  Are you sure you want to cancel appointment <strong>{selectedAptForAction.appointmentCode}</strong>? Your reserved slot will be freed immediately.
+                </p>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Reason (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Feeling better, schedule conflict..."
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t">
+                  <button
+                    type="button"
+                    onClick={() => setPatientActionModal(null)}
+                    className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:text-slate-900"
+                  >
+                    Keep Appointment
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePatientCancel}
+                    disabled={executingAction}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow-md disabled:opacity-50"
+                  >
+                    {executingAction ? 'Cancelling...' : 'Confirm Cancellation'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ----------------- TAB 1: MEDICAL TIMELINE ----------------- */}
       {activeTab === 'timeline' && (

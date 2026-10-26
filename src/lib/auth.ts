@@ -10,6 +10,7 @@ export interface UserPayload {
   name: string;
   role: string;
   hospitalId: string | null;
+  hospitalName?: string | null;
   departmentId?: string | null;
   patientCode?: string | null;
   gender?: string | null;
@@ -69,6 +70,8 @@ export function formatNameFromEmail(email: string | null | undefined): string {
     .join(' ');
 }
 
+import { prisma } from './prisma';
+
 // SECURITY HIERARCHY HELPER SERVICES
 export function isSuperAdmin(user: UserPayload | null): boolean {
   if (!user) return false;
@@ -85,4 +88,25 @@ export function checkTenantAccess(user: UserPayload | null, targetHospitalId: st
   if (user.role === 'SUPER_ADMIN') return true; // Super Admin operates above all hospital tenants
   if (!targetHospitalId || !user.hospitalId) return false;
   return user.hospitalId === targetHospitalId;
+}
+
+export async function checkHospitalSuspension(user: UserPayload | null): Promise<{ isSuspended: boolean; error?: string }> {
+  if (!user || user.role === 'SUPER_ADMIN' || !user.hospitalId) {
+    return { isSuspended: false };
+  }
+  try {
+    const hospital = await prisma.hospital.findUnique({
+      where: { id: user.hospitalId },
+      select: { status: true }
+    });
+    if (hospital && hospital.status === 'SUSPENDED') {
+      return {
+        isSuspended: true,
+        error: 'Your hospital account has been suspended. Please contact the platform administrator for assistance.'
+      };
+    }
+  } catch (e) {
+    // In case of transient DB error, don't falsely suspend
+  }
+  return { isSuspended: false };
 }

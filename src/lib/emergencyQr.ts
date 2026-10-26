@@ -12,14 +12,14 @@ export interface PatientEmergencyData {
 
 // Generate clean, human-readable text payload for smartphone cameras & Google Lens
 export function encodeEmergencyQrPayload(data: PatientEmergencyData): string {
-  const patientPhone = data.phone || '+1 (555) 012-3456';
+  const patientPhone = data.phone || 'Not Shared';
   return `🚨 NEXO MEDICO AI - EMERGENCY HEALTH PASSPORT
 ----------------------------------------
 Patient ID: ${data.patientId}
 Full Name: ${data.fullName}
-Blood Group: ${data.bloodGroup} (Emergency Transfusion)
+Blood Group: ${data.bloodGroup || 'Not Specified'} (Emergency Transfusion)
 Patient Phone: ${patientPhone}
-Emergency Contact: ${data.emergencyContactName} - ${data.emergencyContactPhone}
+Emergency Contact: ${data.emergencyContactName || 'N/A'} - ${data.emergencyContactPhone || 'N/A'}
 Documented Allergies: ${data.allergies || 'No Known Drug Allergies (NKDA)'}
 Chronic Conditions: ${data.conditions || 'None Documented'}
 Resuscitation Preference: ${data.resuscitationStatus || 'Full Code'}
@@ -39,24 +39,28 @@ export function decodeEmergencyQrPayload(qrString: string): PatientEmergencyData
         return match ? match[1].trim() : '';
       };
 
-      const patientId = getVal('Patient ID') || 'NEXO-PAT-000002';
-      const fullName = getVal('Full Name') || 'John Doe';
-      const bloodGroupStr = getVal('Blood Group') || 'O+';
-      const bloodGroup = bloodGroupStr.split(' ')[0] || 'O+';
-      const phone = getVal('Patient Phone') || '+1 (555) 012-3456';
-      const emergencyContactStr = getVal('Emergency Contact') || 'Sarah Doe (Spouse) - +1 (555) 012-3456';
+      const patientId = getVal('Patient ID');
+      const fullName = getVal('Full Name');
+      const bloodGroupStr = getVal('Blood Group');
+      const bloodGroup = bloodGroupStr ? bloodGroupStr.split(' ')[0] : '';
+      const phone = getVal('Patient Phone');
+      const emergencyContactStr = getVal('Emergency Contact');
       
-      let emergencyContactName = 'Sarah Doe (Spouse)';
-      let emergencyContactPhone = '+1 (555) 012-3456';
-      if (emergencyContactStr.includes(' - ')) {
+      let emergencyContactName = '';
+      let emergencyContactPhone = '';
+      if (emergencyContactStr && emergencyContactStr.includes(' - ')) {
         const parts = emergencyContactStr.split(' - ');
         emergencyContactName = parts[0].trim();
         emergencyContactPhone = parts[1].trim();
+      } else if (emergencyContactStr) {
+        emergencyContactName = emergencyContactStr;
       }
 
-      const allergies = getVal('Documented Allergies') || 'Penicillin, Sulfa, Peanuts';
-      const conditions = getVal('Chronic Conditions') || 'Type 1 Diabetes, Mild Asthma';
-      const resuscitationStatus = getVal('Resuscitation Preference') || 'Full Code / Advance Directive Registered';
+      const allergies = getVal('Documented Allergies');
+      const conditions = getVal('Chronic Conditions');
+      const resuscitationStatus = getVal('Resuscitation Preference') || 'Full Code';
+
+      if (!fullName && !patientId) return null;
 
       return {
         patientId,

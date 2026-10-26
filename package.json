@@ -10,7 +10,10 @@
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:seed": "node prisma/seed.mjs",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:backup": "powershell -ExecutionPolicy Bypass -File ./scripts/backup-db.ps1",
+    "db:restore": "powershell -ExecutionPolicy Bypass -File ./scripts/restore-db.ps1",
+    "ai:dev": "python ai_service/main.py"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -20,17 +23,22 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.344.0",
     "next": "14.1.0",
+    "nodemailer": "^10.1.1",
     "pg": "^8.23.1",
     "prisma": "^5.22.0",
+    "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.12.2",
+    "resend": "^6.33.0",
     "tailwind-merge": "^2.2.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.11.24",
+    "@types/nodemailer": "^8.0.2",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.2.61",
     "@types/react-dom": "^18.2.19",
     "autoprefixer": "^10.4.18",

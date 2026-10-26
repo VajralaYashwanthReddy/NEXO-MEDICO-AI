@@ -157,7 +157,7 @@ export function FloatingAiChatbot() {
     if (user) {
       if (user.name) setContactName(user.name);
       if (user.email) setContactEmail(user.email);
-      setContactMobile('+1 (555) 012-3456');
+      setContactMobile(user.phone || '');
     }
   }, [user]);
 
@@ -246,7 +246,7 @@ export function FloatingAiChatbot() {
         body: JSON.stringify({
           registeredName: contactName || user?.name || 'Registered User',
           email: contactEmail || user?.email || 'user@nexomedico.ai',
-          mobile: contactMobile || '+1 (555) 012-3456',
+          mobile: contactMobile || '',
           subject: ticketSubject.trim(),
           description: ticketDescription.trim(),
           issueType: ticketCategory,
@@ -448,7 +448,7 @@ Our platform super admin team has received your ticket and will process it live 
                         required
                         value={contactMobile}
                         onChange={(e) => setContactMobile(e.target.value)}
-                        placeholder="+1 (555) 012-3456"
+                        placeholder="+91 98765 43210"
                         className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-2xs"
                       />
                     </div>

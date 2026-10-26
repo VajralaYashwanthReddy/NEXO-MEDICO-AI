@@ -33,49 +33,79 @@ export async function GET(req: NextRequest) {
 
     let dbPatients: any[] = [];
     try {
-      dbPatients = await prisma.patient.findMany({
-        where: {
-          ...(hospitalIdFilter ? { hospitalId: hospitalIdFilter } : (isGlobal ? {} : { hospitalId: user.hospitalId || undefined })),
-          ...(search ? {
+      if (user.role === 'PATIENT') {
+        dbPatients = await prisma.patient.findMany({
+          where: {
             OR: [
-              { patientCode: { contains: search } },
-              { fullName: { contains: search } },
-              { phone: { contains: search } },
-              { email: { contains: search } }
+              { userId: user.id },
+              ...(user.email ? [{ email: user.email.toLowerCase().trim() }] : []),
+              ...((user as any).patientCode ? [{ patientCode: (user as any).patientCode }] : [])
             ]
-          } : {})
-        },
-        include: {
-          hospital: { select: { id: true, name: true, city: true } },
-          user: { select: { id: true, email: true, status: true } },
-          _count: {
-            select: {
-              appointments: true,
-              consultations: true,
-              prescriptions: true,
-              labOrders: true,
-              admissions: true
+          },
+          include: {
+            hospital: { select: { id: true, name: true, city: true } },
+            user: { select: { id: true, email: true, status: true } },
+            _count: {
+              select: {
+                appointments: true,
+                consultations: true,
+                prescriptions: true,
+                labOrders: true,
+                admissions: true
+              }
             }
           }
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 50
-      });
+        });
+      } else {
+        dbPatients = await prisma.patient.findMany({
+          where: {
+            ...(hospitalIdFilter ? { hospitalId: hospitalIdFilter } : (isGlobal ? {} : { hospitalId: user.hospitalId || undefined })),
+            ...(search ? {
+              OR: [
+                { patientCode: { contains: search } },
+                { fullName: { contains: search } },
+                { phone: { contains: search } },
+                { email: { contains: search } }
+              ]
+            } : {})
+          },
+          include: {
+            hospital: { select: { id: true, name: true, city: true } },
+            user: { select: { id: true, email: true, status: true } },
+            _count: {
+              select: {
+                appointments: true,
+                consultations: true,
+                prescriptions: true,
+                labOrders: true,
+                admissions: true
+              }
+            }
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50
+        });
+      }
     } catch (dbErr: any) {
       console.warn('Database query fallback to in-memory patient store:', dbErr.message);
     }
 
     // Combine Prisma patients with fallback in-memory patient store
     const fallbackPatients = getGlobalPatients().filter(p => {
+      if (user.role === 'PATIENT') {
+        const uEmail = user.email?.toLowerCase().trim();
+        const uCode = (user as any).patientCode;
+        return (p.userId === user.id) || (uEmail && p.email?.toLowerCase().trim() === uEmail) || (uCode && p.patientCode === uCode);
+      }
       if (hospitalIdFilter && p.hospitalId !== hospitalIdFilter) return false;
       if (!isGlobal && user.hospitalId && p.hospitalId !== user.hospitalId) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
-          p.patientCode.toLowerCase().includes(q) ||
-          p.fullName.toLowerCase().includes(q) ||
-          p.phone.toLowerCase().includes(q) ||
-          p.email.toLowerCase().includes(q)
+          p.patientCode?.toLowerCase().includes(q) ||
+          p.fullName?.toLowerCase().includes(q) ||
+          p.phone?.toLowerCase().includes(q) ||
+          p.email?.toLowerCase().includes(q)
         );
       }
       return true;
@@ -115,6 +145,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized user context' }, { status: 401 });
     }
 
+    // Check if caller's hospital is suspended
+    if (user.role !== 'SUPER_ADMIN' && user.hospitalId) {
+      const hosp = await prisma.hospital.findUnique({
+        where: { id: user.hospitalId },
+        select: { status: true }
+      });
+      if (hosp?.status === 'SUSPENDED') {
+        return NextResponse.json({
+          error: 'Your hospital account has been suspended. Please contact the platform administrator for assistance.',
+          code: 'HOSPITAL_SUSPENDED'
+        }, { status: 403 });
+      }
+    }
+
     const {
       fullName,
       dob,
@@ -139,67 +183,76 @@ export async function POST(req: NextRequest) {
     const phoneClean = phone.trim();
     const phoneDigits = phoneClean.replace(/\D/g, '');
 
-    // Check duplicate email or phone in global store
-    const globalPatients = getGlobalPatients();
-    const existingPatient = globalPatients.find(p => {
-      if (emailClean && (p.email?.toLowerCase().trim() === emailClean || p.user?.email?.toLowerCase().trim() === emailClean)) return true;
-      if (p.phone) {
-        const pDigits = p.phone.replace(/\D/g, '');
-        if (phoneDigits.length >= 7 && pDigits.length >= 7 && (pDigits.endsWith(phoneDigits) || phoneDigits.endsWith(pDigits))) return true;
-        if (p.phone.trim() === phoneClean) return true;
+    // 1. Strict Duplicate Email Validation (normalized)
+    if (emailClean) {
+      const existingUserByEmail = await prisma.user.findUnique({ where: { email: emailClean } });
+      const existingPatientByEmail = await prisma.patient.findFirst({ where: { email: emailClean } });
+      if (existingUserByEmail || existingPatientByEmail) {
+        return NextResponse.json({
+          error: 'Email already exists. Please use a different email address.',
+          field: 'email'
+        }, { status: 409 });
+      }
+    }
+
+    // 2. Strict Duplicate Phone Validation (normalized)
+    const allPatients = await prisma.patient.findMany({ select: { id: true, phone: true } });
+    const duplicatePhonePatient = allPatients.find(p => {
+      if (!p.phone) return false;
+      const pDigits = p.phone.replace(/\D/g, '');
+      if (p.phone.trim() === phoneClean) return true;
+      if (phoneDigits.length >= 7 && pDigits.length >= 7) {
+        if (phoneDigits === pDigits) return true;
+        if (phoneDigits.length >= 10 && pDigits.length >= 10 && phoneDigits.slice(-10) === pDigits.slice(-10)) return true;
       }
       return false;
     });
 
-    if (existingPatient) {
+    if (duplicatePhonePatient) {
       return NextResponse.json({
-        error: 'A patient with this email address or phone number is already registered in the system.'
-      }, { status: 400 });
+        error: 'Phone number already exists. Please use a different phone number.',
+        field: 'phone'
+      }, { status: 409 });
     }
 
-    // Determine target hospital ID
-    let targetHospitalId = hospitalId || user.hospitalId || 'hosp-metro-01';
+    // Target Hospital ID
+    let targetHospitalId = hospitalId || user.hospitalId;
+    if (!targetHospitalId) {
+      const defHosp = await prisma.hospital.findFirst({ where: { status: 'ACTIVE' } });
+      targetHospitalId = defHosp?.id || 'hosp-metro-01';
+    }
 
-    // Fallback patient code generation
-    const fallbackCount = getGlobalPatients().length + 10;
-    let patientCode = `NEXO-PAT-${String(fallbackCount).padStart(6, '0')}`;
-
-    const patientEmail = email ? email.toLowerCase().trim() : `${patientCode.toLowerCase()}@patient.nexomedico.ai`;
+    const globalCount = await prisma.patient.count();
+    const patientCode = `NEXO-PAT-${String(globalCount + 1).padStart(6, '0')}`;
+    const patientEmail = emailClean || `${patientCode.toLowerCase()}@patient.nexomedico.ai`;
     const patientPassword = password || 'password123';
+    const passwordHash = await hashPassword(patientPassword);
 
-    let patientRecord: any = null;
+    // 3. Atomic Transaction: Create linked User and Patient profile
+    const { linkedUser, patientRecord } = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          email: patientEmail,
+          passwordHash,
+          name: fullName,
+          role: 'PATIENT',
+          hospitalId: targetHospitalId,
+          status: 'ACTIVE'
+        }
+      });
 
-    try {
-      const globalCount = await prisma.patient.count();
-      patientCode = `NEXO-PAT-${String(globalCount + 1).padStart(6, '0')}`;
-      const passwordHash = await hashPassword(patientPassword);
-
-      let linkedUser = await prisma.user.findUnique({ where: { email: patientEmail } });
-      if (!linkedUser) {
-        linkedUser = await prisma.user.create({
-          data: {
-            email: patientEmail,
-            passwordHash,
-            name: fullName,
-            role: 'PATIENT',
-            hospitalId: targetHospitalId,
-            status: 'ACTIVE'
-          }
-        });
-      }
-
-      patientRecord = await prisma.patient.create({
+      const createdPatient = await tx.patient.create({
         data: {
           patientCode,
           hospitalId: targetHospitalId,
-          userId: linkedUser.id,
+          userId: createdUser.id,
           fullName,
           dob,
           gender,
-          phone,
+          phone: phoneClean,
           email: patientEmail,
           address: address || 'N/A',
-          emergencyContact: emergencyContact || phone,
+          emergencyContact: emergencyContact || phoneClean,
           bloodGroup: bloodGroup || 'O+',
           allergies: allergies || null,
           conditions: conditions || null,
@@ -207,43 +260,23 @@ export async function POST(req: NextRequest) {
         }
       });
 
-      try {
-        await createAuditLog({
-          hospitalId: targetHospitalId,
-          userId: user.id,
-          action: 'PATIENT_REGISTER_GLOBAL',
-          resource: `Patient:${patientRecord.patientCode}`,
-          details: { fullName: patientRecord.fullName, patientCode: patientRecord.patientCode, email: patientEmail }
-        });
-      } catch (auditErr) {
-        console.warn('Audit log skipped during patient creation:', auditErr);
-      }
-    } catch (dbErr: any) {
-      console.warn('Prisma DB unavailable, registering patient to in-memory zero-downtime fallback store:', dbErr.message);
-    }
+      return { linkedUser: createdUser, patientRecord: createdPatient };
+    });
 
-    // If database was down or patientRecord not created via Prisma, register into patientStore memory
-    if (!patientRecord) {
-      patientRecord = addGlobalPatient({
-        patientCode,
+    try {
+      addGlobalPatient(patientRecord as any);
+    } catch (e) {}
+
+    try {
+      await createAuditLog({
         hospitalId: targetHospitalId,
-        fullName,
-        dob,
-        gender,
-        phone,
-        email: patientEmail,
-        address: address || 'N/A',
-        emergencyContact: emergencyContact || phone,
-        bloodGroup: bloodGroup || 'O+',
-        allergies: allergies || null,
-        conditions: conditions || null,
-        previousHistory: previousHistory || null
+        userId: user.id,
+        action: 'PATIENT_REGISTER_GLOBAL',
+        resource: `Patient:${patientRecord.patientCode}`,
+        details: { fullName: patientRecord.fullName, patientCode: patientRecord.patientCode, email: patientEmail }
       });
-    } else {
-      addGlobalPatient(patientRecord);
-    }
+    } catch (auditErr) {}
 
-    // Broadcast SSE live event
     try {
       eventBroadcaster.broadcast('PATIENT_REGISTERED', {
         patient: patientRecord,
@@ -251,9 +284,7 @@ export async function POST(req: NextRequest) {
         fullName: patientRecord.fullName,
         hospitalId: targetHospitalId
       });
-    } catch (bcErr) {
-      console.warn('Broadcasting PATIENT_REGISTERED skipped:', bcErr);
-    }
+    } catch (bcErr) {}
 
     return NextResponse.json({
       message: 'Patient registered with Universal Identity Code and portal access created',
@@ -267,6 +298,27 @@ export async function POST(req: NextRequest) {
     }, { status: 201 });
   } catch (err: any) {
     console.error('Registration route error:', err);
+
+    if (err.code === 'P2002') {
+      const metaTarget = Array.isArray(err.meta?.target) ? err.meta.target.join(' ') : String(err.meta?.target || '');
+      if (metaTarget.includes('email')) {
+        return NextResponse.json({
+          error: 'Email already exists. Please use a different email address.',
+          field: 'email'
+        }, { status: 409 });
+      }
+      if (metaTarget.includes('phone')) {
+        return NextResponse.json({
+          error: 'Phone number already exists. Please use a different phone number.',
+          field: 'phone'
+        }, { status: 409 });
+      }
+      return NextResponse.json({
+        error: 'Email already exists. Please use a different email address.',
+        field: 'email'
+      }, { status: 409 });
+    }
+
     return NextResponse.json({ error: err.message || 'Failed to register patient' }, { status: 500 });
   }
 }

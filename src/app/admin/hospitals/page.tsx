@@ -48,6 +48,15 @@ export default function AdminHospitalsPage() {
   const [detailModalHospital, setDetailModalHospital] = useState<any>(null);
   const [inspectionTab, setInspectionTab] = useState('overview');
 
+  // Suspension & Reactivation Confirmation Modal State
+  const [statusModalHospital, setStatusModalHospital] = useState<any>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+
+  // Permanent Deletion Confirmation Modal State
+  const [deleteModalHospital, setDeleteModalHospital] = useState<any>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const [addFormData, setAddFormData] = useState({
     name: '',
     type: 'General Hospital & Research Center',
@@ -88,42 +97,20 @@ export default function AdminHospitalsPage() {
   const fetchHospitals = (q = search, showSpinner = true) => {
     if (showSpinner) setLoading(true);
     const jwt = token || (typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : '');
-    const localSaved = typeof window !== 'undefined'
-      ? JSON.parse(localStorage.getItem('nexo_custom_registered_hospitals') || '[]')
-      : [];
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
     if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
-    if (localSaved.length > 0) {
-      try {
-        headers['x-client-hospitals'] = encodeURIComponent(JSON.stringify(localSaved));
-      } catch (e) {}
-    }
 
     fetch(`/api/admin/hospitals?q=${encodeURIComponent(q)}`, { headers, credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         const serverList = data.hospitals || [];
-        const mergedMap = new Map();
-        serverList.forEach((h: any) => { if (h && (h.id || h.registrationNo)) mergedMap.set(h.id || h.registrationNo, h); });
-        localSaved.forEach((h: any) => {
-          const key = h?.id || h?.registrationNo;
-          if (key && !mergedMap.has(key)) {
-            mergedMap.set(key, h);
-          }
-        });
-
-        const mergedList = Array.from(mergedMap.values());
-        setHospitals(mergedList);
-
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('nexo_custom_registered_hospitals', JSON.stringify(mergedList));
-        }
+        setHospitals(serverList);
 
         if (user) {
-          const found = mergedList.find((h: any) => h.id === user.hospitalId) || mergedList[0];
+          const found = serverList.find((h: any) => h.id === user.hospitalId) || serverList[0];
           if (found) {
             setMyHospital(found);
             setProfileForm({
@@ -248,51 +235,61 @@ export default function AdminHospitalsPage() {
     }
   };
 
-  const toggleHospitalStatus = async (hospitalId: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-    setHospitals(prev => prev.map(h => h.id === hospitalId ? { ...h, status: newStatus } : h));
-
+  const handleConfirmStatusChange = async () => {
+    if (!statusModalHospital) return;
+    const newStatus = statusModalHospital.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    setStatusLoading(true);
     try {
       const res = await fetch('/api/admin/hospitals', {
         method: 'PUT',
         headers: getAuthHeaders(),
         credentials: 'include',
-        body: JSON.stringify({ hospitalId, status: newStatus })
+        body: JSON.stringify({ hospitalId: statusModalHospital.id, status: newStatus })
       });
+      const data = await res.json();
       if (!res.ok) {
-        setHospitals(prev => prev.map(h => h.id === hospitalId ? { ...h, status: currentStatus } : h));
-        const data = await res.json();
         alert(data.error || 'Failed to update hospital status');
       } else {
+        setStatusModalHospital(null);
         fetchHospitals(search, false);
       }
-    } catch (err) {
-      setHospitals(prev => prev.map(h => h.id === hospitalId ? { ...h, status: currentStatus } : h));
+    } catch (err: any) {
       console.error(err);
+      alert(err.message || 'Error updating hospital status');
+    } finally {
+      setStatusLoading(false);
     }
   };
 
-  const handleDeleteHospital = async (hospitalId: string, hospitalName: string) => {
-    if (!confirm(`Are you sure you want to permanently delete hospital tenant "${hospitalName}"? This action cannot be undone.`)) {
-      return;
-    }
-    setHospitals(prev => prev.filter(h => h.id !== hospitalId && h.registrationNo !== hospitalId));
-
+  const handleConfirmDelete = async () => {
+    if (!deleteModalHospital) return;
+    setDeleteLoading(true);
     try {
-      const res = await fetch(`/api/admin/hospitals?hospitalId=${encodeURIComponent(hospitalId)}`, {
+      const res = await fetch(`/api/admin/hospitals?hospitalId=${encodeURIComponent(deleteModalHospital.id)}`, {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         alert(data.error || 'Failed to delete hospital tenant');
-        fetchHospitals(search, false);
       } else {
+        if (typeof window !== 'undefined') {
+          try {
+            const localSaved = JSON.parse(localStorage.getItem('nexo_custom_registered_hospitals') || '[]');
+            const filtered = localSaved.filter((h: any) => h.id !== deleteModalHospital.id && h.registrationNo !== deleteModalHospital.registrationNo);
+            localStorage.setItem('nexo_custom_registered_hospitals', JSON.stringify(filtered));
+          } catch (e) {}
+        }
+        setHospitals(prev => prev.filter(h => h.id !== deleteModalHospital.id));
+        setDeleteModalHospital(null);
+        setDeleteConfirmText('');
         fetchHospitals(search, false);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       alert('Error deleting hospital tenant');
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -676,17 +673,20 @@ export default function AdminHospitalsPage() {
                         <Eye className="w-3.5 h-3.5 text-slate-600" /> Inspect
                       </button>
                       <button
-                        onClick={() => toggleHospitalStatus(h.id, h.status)}
+                        onClick={() => setStatusModalHospital(h)}
                         className={`px-3 py-1.5 text-[11px] font-extrabold rounded-lg transition-all ${
                           h.status === 'ACTIVE'
                             ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200'
                             : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                         }`}
                       >
-                        {h.status === 'ACTIVE' ? 'Suspend' : 'Activate'}
+                        {h.status === 'ACTIVE' ? 'Suspend' : 'Reactivate'}
                       </button>
                       <button
-                        onClick={() => handleDeleteHospital(h.id, h.name)}
+                        onClick={() => {
+                          setDeleteModalHospital(h);
+                          setDeleteConfirmText('');
+                        }}
                         className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[11px] rounded-lg transition-all inline-flex items-center gap-1 shadow-xs"
                         title="Permanently Delete Hospital Tenant"
                       >
@@ -923,6 +923,178 @@ export default function AdminHospitalsPage() {
               </button>
               <button onClick={() => setDetailModalHospital(null)} className="px-5 py-2 bg-slate-900 text-white font-bold rounded-xl shadow">
                 Close Inspection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------- MODAL 3: SUSPEND / REACTIVATE CONFIRMATION MODAL ----------------- */}
+      {statusModalHospital && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border text-xs space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                {statusModalHospital.status === 'ACTIVE' ? (
+                  <>
+                    <XCircle className="w-5 h-5 text-rose-600" />
+                    <span>Suspend Hospital Tenant</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    <span>Reactivate Hospital Tenant</span>
+                  </>
+                )}
+              </h3>
+              <button
+                onClick={() => setStatusModalHospital(null)}
+                disabled={statusLoading}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-slate-700">
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Target Hospital Organization</span>
+                <strong className="text-sm font-black text-slate-900 block">{statusModalHospital.name}</strong>
+                <span className="text-[11px] font-mono font-semibold text-cyan-800">{statusModalHospital.registrationNo}</span>
+              </div>
+
+              {statusModalHospital.status === 'ACTIVE' ? (
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 text-[11px] space-y-1">
+                  <p className="font-bold">⚠️ Warning: Tenant Suspension Impact</p>
+                  <p>
+                    Suspending <strong>{statusModalHospital.name}</strong> will immediately block login and platform access for its Hospital Administrator and all associated doctors, nurses, pharmacists, and staff.
+                  </p>
+                  <p className="text-[10px] text-rose-700 mt-1">
+                    Hospital clinical and configuration data will be preserved. You can reactivate this tenant at any time.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-900 text-[11px] space-y-1">
+                  <p className="font-bold">✓ Reactivate Tenant Access</p>
+                  <p>
+                    Reactivating <strong>{statusModalHospital.name}</strong> will immediately restore platform access and login privileges for all associated hospital users and staff.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t">
+              <button
+                type="button"
+                onClick={() => setStatusModalHospital(null)}
+                disabled={statusLoading}
+                className="px-4 py-2 text-slate-600 font-extrabold hover:text-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmStatusChange}
+                disabled={statusLoading}
+                className={`px-5 py-2.5 font-black text-xs rounded-xl shadow-md flex items-center gap-1.5 transition-all text-white ${
+                  statusModalHospital.status === 'ACTIVE'
+                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30'
+                    : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
+                }`}
+              >
+                {statusLoading
+                  ? 'Updating...'
+                  : statusModalHospital.status === 'ACTIVE'
+                  ? 'Confirm Suspension'
+                  : 'Confirm Reactivation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------- MODAL 4: PERMANENT DELETE HOSPITAL TENANT MODAL ----------------- */}
+      {deleteModalHospital && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border text-xs space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-extrabold text-rose-700 text-base flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-rose-600" /> Permanently Delete Hospital Tenant
+              </h3>
+              <button
+                onClick={() => {
+                  setDeleteModalHospital(null);
+                  setDeleteConfirmText('');
+                }}
+                disabled={deleteLoading}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-slate-700">
+              <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-2xl text-rose-950 space-y-2">
+                <p className="font-black text-xs text-rose-700 flex items-center gap-1.5">
+                  <XCircle className="w-4 h-4 text-rose-600 shrink-0" /> IRREVERSIBLE ACTION WARNING
+                </p>
+                <p className="text-[11px] leading-relaxed">
+                  You are about to permanently delete hospital tenant <strong>&ldquo;{deleteModalHospital.name}&rdquo;</strong> (Registration No: <span className="font-mono font-bold">{deleteModalHospital.registrationNo}</span>).
+                </p>
+                <ul className="list-disc list-inside text-[10px] space-y-0.5 text-rose-900 font-medium">
+                  <li>The hospital organization record will be permanently deleted.</li>
+                  <li>All associated Hospital Admin, doctor, nurse, and staff user accounts will be permanently removed.</li>
+                  <li>All inpatient beds, wards, departments, and appointments will be removed.</li>
+                  <li>Associated users will no longer be able to log in or access APIs.</li>
+                </ul>
+              </div>
+
+              <div className="space-y-1.5 pt-1">
+                <label className="font-extrabold text-slate-800 block text-[11px]">
+                  To confirm deletion, please type the hospital name: <span className="text-rose-700 font-mono select-all font-black">{deleteModalHospital.name}</span>
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder={`Type "${deleteModalHospital.name}" or "${deleteModalHospital.registrationNo}" to confirm`}
+                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteModalHospital(null);
+                  setDeleteConfirmText('');
+                }}
+                disabled={deleteLoading}
+                className="px-4 py-2 text-slate-600 font-extrabold hover:text-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={
+                  deleteLoading ||
+                  (deleteConfirmText.trim().toLowerCase() !== deleteModalHospital.name.trim().toLowerCase() &&
+                   deleteConfirmText.trim().toUpperCase() !== deleteModalHospital.registrationNo.trim().toUpperCase())
+                }
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-xs rounded-xl shadow-md shadow-rose-600/30 flex items-center gap-1.5 transition-all"
+              >
+                {deleteLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Deleting Tenant...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" /> Permanently Delete Tenant
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -54,6 +54,10 @@ export default function HospitalRegisterWizard() {
   const [expectedCaptcha, setExpectedCaptcha] = useState('');
   const [captchaError, setCaptchaError] = useState('');
   const [showOtpModal, setShowOtpModal] = useState(false);
+  const [challengeToken, setChallengeToken] = useState('');
+  const [destinationText, setDestinationText] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpModalError, setOtpModalError] = useState('');
 
   const { login } = useAuth();
 
@@ -190,7 +194,7 @@ export default function HospitalRegisterWizard() {
     setStep(prev => prev + 1);
   };
 
-  const initiateRegistrationSequence = (e: React.FormEvent) => {
+  const initiateRegistrationSequence = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
 
@@ -201,14 +205,45 @@ export default function HospitalRegisterWizard() {
 
     if (!validateCurrentStep(4)) return;
 
-    setShowOtpModal(true);
+    setLoading(true);
+    setError('');
+    setFieldErrors({});
+
+    try {
+      // Dispatch 6-digit OTP to Administrator Email via Gmail SMTP
+      const res = await fetch('/api/auth/otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_registration_otp',
+          email: formData.adminEmail.trim().toLowerCase(),
+          name: formData.adminName.trim()
+        })
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        if (res.status === 409) {
+          setFieldErrors({ adminEmail: data.error || 'This administrator email is already registered.' });
+        }
+        throw new Error(data.error || 'Failed to dispatch registration OTP via Gmail SMTP.');
+      }
+
+      setChallengeToken(data.challengeToken);
+      setDestinationText(data.maskedEmail || formData.adminEmail);
+      setShowOtpModal(true);
+    } catch (err: any) {
+      setError(err.message || 'Failed to initiate OTP verification.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleOtpSuccess = async () => {
+  const handleVerifyAndRegister = async (otpCode: string) => {
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
-    setShowOtpModal(false);
-    setLoading(true);
+    setOtpLoading(true);
+    setOtpModalError('');
     setError('');
     setFieldErrors({});
 
@@ -229,7 +264,9 @@ export default function HospitalRegisterWizard() {
       numberBeds: formData.numberBeds || '50',
       adminName: formData.adminName.trim(),
       adminEmail: formData.adminEmail.trim().toLowerCase(),
-      adminPassword: formData.adminPassword
+      adminPassword: formData.adminPassword,
+      challengeToken,
+      otpCode
     };
 
     try {
@@ -248,14 +285,14 @@ export default function HospitalRegisterWizard() {
         if (errorField) {
           setFieldErrors({ [errorField]: errorMsg });
         }
-        // Never reset step to 1 or clear entered fields on error
         throw new Error(errorMsg);
       }
 
+      setShowOtpModal(false);
       const adminUser = data.adminUser || data.user;
       const hospital = data.hospital;
 
-      setSuccessMessage('Registration successfully saved! Launching Hospital Dashboard...');
+      setSuccessMessage('Registration successfully verified! Launching Hospital Dashboard...');
 
       login(data.token, {
         id: adminUser.id,
@@ -267,13 +304,32 @@ export default function HospitalRegisterWizard() {
         permissions: ['*']
       });
 
-      // Hard redirect to Hospital Admin Dashboard to guarantee clean HTTP-only cookie session and tenant data load
-      window.location.href = `/admin/dashboard?hospitalId=${hospital.id}`;
+      // Redirect to Hospital Admin Dashboard to guarantee clean HTTP-only cookie session and tenant data load
+      window.location.href = '/admin/dashboard';
     } catch (err: any) {
-      setError(err.message || 'Hospital registration failed. Please review your details and try again.');
+      console.error('Hospital registration failed:', err);
+      setOtpModalError(err.message || 'Hospital registration failed. Please review your OTP code.');
     } finally {
-      setLoading(false);
+      setOtpLoading(false);
       isSubmittingRef.current = false;
+    }
+  };
+
+  const handleResendRegistrationOtp = async () => {
+    const res = await fetch('/api/auth/otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'resend_otp',
+        challengeToken
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to resend code');
+    }
+    if (data.challengeToken) {
+      setChallengeToken(data.challengeToken);
     }
   };
 
@@ -784,27 +840,18 @@ export default function HospitalRegisterWizard() {
               </div>
             )}
 
-            {/* 2FA Mock OTP Verification Modal */}
-            <MockOtpModal
-              isOpen={showOtpModal}
-              onClose={() => setShowOtpModal(false)}
-              onSuccess={handleOtpSuccess}
-              destinationText={formData.adminEmail || formData.hospitalName}
-              title="Hospital Organization 2FA Verification"
-              loading={loading}
-            />
-
             {/* Wizard Navigation Buttons */}
             <div className="flex items-center justify-between mt-8 pt-4 border-t border-slate-800">
               {step > 1 ? (
                 <button
                   type="button"
                   disabled={loading}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
                     setError('');
                     setStep(step - 1);
                   }}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg flex items-center gap-1 transition-all disabled:opacity-50"
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" /> Back
                 </button>
@@ -818,8 +865,11 @@ export default function HospitalRegisterWizard() {
                 <button
                   type="button"
                   disabled={loading}
-                  onClick={handleNextStep}
-                  className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-lg flex items-center gap-1 transition-all shadow-md shadow-cyan-600/30 disabled:opacity-50"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleNextStep();
+                  }}
+                  className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded-lg flex items-center gap-1 transition-all shadow-md shadow-cyan-600/30 disabled:opacity-50 cursor-pointer"
                 >
                   Next Step <ChevronRight className="w-4 h-4" />
                 </button>
@@ -840,6 +890,19 @@ export default function HospitalRegisterWizard() {
               )}
             </div>
           </form>
+
+          {/* Registration OTP Verification Modal */}
+          <MockOtpModal
+            isOpen={showOtpModal}
+            onClose={() => setShowOtpModal(false)}
+            onVerify={handleVerifyAndRegister}
+            onResend={handleResendRegistrationOtp}
+            destinationText={destinationText || formData.adminEmail || 'Administrator Email'}
+            title="Administrator Email Verification"
+            subtitle={`A 6-digit registration code was dispatched via Gmail SMTP to ${destinationText || formData.adminEmail}.`}
+            loading={otpLoading}
+            error={otpModalError}
+          />
         </div>
       </div>
     </div>

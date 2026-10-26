@@ -421,6 +421,304 @@ async function main() {
     }
   });
 
+  // 14. Additional Sample Patients
+  const patient2User = await prisma.user.upsert({
+    where: { email: 'maria.garcia@gmail.com' },
+    update: { hospitalId: hospital.id },
+    create: {
+      email: 'maria.garcia@gmail.com',
+      passwordHash: defaultPassword,
+      name: 'Maria Garcia',
+      role: 'PATIENT',
+      hospitalId: hospital.id,
+      status: 'ACTIVE'
+    }
+  });
+
+  const patient2 = await prisma.patient.upsert({
+    where: { patientCode: 'NEXO-PAT-000002' },
+    update: {},
+    create: {
+      patientCode: 'NEXO-PAT-000002',
+      hospitalId: hospital.id,
+      userId: patient2User.id,
+      fullName: 'Maria Garcia',
+      dob: '1991-03-22',
+      gender: 'Female',
+      phone: '+1 (555) 432-1098',
+      email: 'maria.garcia@gmail.com',
+      address: '210 Pine Street, Queens, NY',
+      emergencyContact: 'Carlos Garcia (Brother) - +1 (555) 876-5432',
+      bloodGroup: 'A+',
+      allergies: 'None known',
+      conditions: 'Migraine with Aura',
+      previousHistory: 'Mild concussion in 2021'
+    }
+  });
+
+  const patient3User = await prisma.user.upsert({
+    where: { email: 'david.kumar@gmail.com' },
+    update: { hospitalId: hospital.id },
+    create: {
+      email: 'david.kumar@gmail.com',
+      passwordHash: defaultPassword,
+      name: 'David Kumar',
+      role: 'PATIENT',
+      hospitalId: hospital.id,
+      status: 'ACTIVE'
+    }
+  });
+
+  const patient3 = await prisma.patient.upsert({
+    where: { patientCode: 'NEXO-PAT-000003' },
+    update: {},
+    create: {
+      patientCode: 'NEXO-PAT-000003',
+      hospitalId: hospital.id,
+      userId: patient3User.id,
+      fullName: 'David Kumar',
+      dob: '1968-11-05',
+      gender: 'Male',
+      phone: '+1 (555) 654-9870',
+      email: 'david.kumar@gmail.com',
+      address: '88 Oak Avenue, Manhattan, NY',
+      emergencyContact: 'Sunita Kumar (Spouse) - +1 (555) 234-5678',
+      bloodGroup: 'B+',
+      allergies: 'Aspirin',
+      conditions: 'Coronary Artery Disease, Hyperlipidemia',
+      previousHistory: 'Stent placement in LAD (2022)'
+    }
+  });
+
+  // 15. Seed Staff Profiles
+  const staffMembers = [
+    { user: nurseUser, employeeId: 'STF-NUR-01', designation: 'Head ICU Nurse', dept: deptMap['ICU_DEPT'] },
+    { user: pharmaUser, employeeId: 'STF-PHARM-01', designation: 'Chief Clinical Pharmacist', dept: deptMap['GENMED'] },
+    { user: labUser, employeeId: 'STF-LAB-01', designation: 'Senior Pathology Technologist', dept: deptMap['GENMED'] }
+  ];
+
+  for (const s of staffMembers) {
+    await prisma.staffProfile.upsert({
+      where: { hospitalId_employeeId: { hospitalId: hospital.id, employeeId: s.employeeId } },
+      update: { designation: s.designation },
+      create: {
+        userId: s.user.id,
+        hospitalId: hospital.id,
+        employeeId: s.employeeId,
+        designation: s.designation,
+        departmentId: s.dept,
+        status: 'ACTIVE'
+      }
+    });
+  }
+
+  // 16. Seed Appointments
+  const todayStr = new Date().toISOString().split('T')[0];
+  await prisma.appointment.upsert({
+    where: { appointmentCode: 'APT-2026-0001' },
+    update: {},
+    create: {
+      appointmentCode: 'APT-2026-0001',
+      patientId: patientObj.id,
+      doctorId: doctorUser1.id,
+      departmentId: deptMap['CARD'],
+      hospitalId: hospital.id,
+      date: todayStr,
+      timeSlot: '10:00 AM',
+      type: 'ROUTINE',
+      status: 'SCHEDULED',
+      reason: 'Quarterly cardiovascular checkup and blood pressure review'
+    }
+  });
+
+  await prisma.appointment.upsert({
+    where: { appointmentCode: 'APT-2026-0002' },
+    update: {},
+    create: {
+      appointmentCode: 'APT-2026-0002',
+      patientId: patient2.id,
+      doctorId: doctorUser2.id,
+      departmentId: deptMap['NEUR'],
+      hospitalId: hospital.id,
+      date: todayStr,
+      timeSlot: '11:30 AM',
+      type: 'GENERAL',
+      status: 'IN_PROGRESS',
+      reason: 'Recurrent migraine headache with visual aura'
+    }
+  });
+
+  await prisma.appointment.upsert({
+    where: { appointmentCode: 'APT-2026-0003' },
+    update: {},
+    create: {
+      appointmentCode: 'APT-2026-0003',
+      patientId: patient3.id,
+      doctorId: doctorUser1.id,
+      departmentId: deptMap['CARD'],
+      hospitalId: hospital.id,
+      date: todayStr,
+      timeSlot: '02:00 PM',
+      type: 'FOLLOW_UP',
+      status: 'COMPLETED',
+      reason: 'Post-angioplasty annual evaluation'
+    }
+  });
+
+  // 17. Seed Consultation & Prescriptions
+  const consult1 = await prisma.consultation.create({
+    data: {
+      patientId: patientObj.id,
+      doctorId: doctorUser1.id,
+      hospitalId: hospital.id,
+      symptoms: 'Mild morning headache, occasional shortness of breath with exertion',
+      vitalsBp: '138/88 mmHg',
+      vitalsHr: '74 bpm',
+      vitalsTemp: '98.6 °F',
+      vitalsSpo2: '98%',
+      vitalsRr: '16/min',
+      clinicalNotes: 'Cardiovascular exam normal. S1/S2 distinct, no murmurs. Mildly elevated systolic blood pressure.',
+      diagnosis: 'Essential Hypertension Stage 1 & Hyperlipidemia',
+      status: 'COMPLETED'
+    }
+  });
+
+  const medAtor = await prisma.medicine.findFirst({ where: { hospitalId: hospital.id, code: 'MED-ATO-20' } });
+  const medLis = await prisma.medicine.findFirst({ where: { hospitalId: hospital.id, code: 'MED-LIS-10' } });
+  const medPar = await prisma.medicine.findFirst({ where: { hospitalId: hospital.id, code: 'MED-PAR-500' } });
+
+  const rx1 = await prisma.prescription.upsert({
+    where: { prescriptionCode: 'RX-2026-0001' },
+    update: {},
+    create: {
+      prescriptionCode: 'RX-2026-0001',
+      consultationId: consult1.id,
+      patientId: patientObj.id,
+      doctorId: doctorUser1.id,
+      hospitalId: hospital.id,
+      status: 'ISSUED',
+      instructions: 'Take medications once daily after dinner. Avoid grapefruit juice with Atorvastatin.',
+      digitalSignature: 'SIG_DR_SARAH_SMITH_MD_NYC_2026'
+    }
+  });
+
+  if (medAtor) {
+    await prisma.prescriptionItem.create({
+      data: {
+        prescriptionId: rx1.id,
+        medicineId: medAtor.id,
+        medicineName: medAtor.name,
+        strength: '20 mg',
+        dosage: '1 tablet',
+        route: 'Oral',
+        frequency: 'Once daily at bedtime',
+        durationDays: 30,
+        quantity: 30,
+        foodRelation: 'After food',
+        instructions: 'Lipid lowering therapy'
+      }
+    });
+  }
+
+  if (medLis) {
+    await prisma.prescriptionItem.create({
+      data: {
+        prescriptionId: rx1.id,
+        medicineId: medLis.id,
+        medicineName: medLis.name,
+        strength: '10 mg',
+        dosage: '1 tablet',
+        route: 'Oral',
+        frequency: 'Once daily morning',
+        durationDays: 30,
+        quantity: 30,
+        foodRelation: 'After food',
+        instructions: 'Blood pressure control'
+      }
+    });
+  }
+
+  // 18. Seed Lab Orders & Reports
+  const cbcTest = await prisma.labTest.findFirst({ where: { hospitalId: hospital.id, code: 'LAB-CBC' } });
+  const lipidTest = await prisma.labTest.findFirst({ where: { hospitalId: hospital.id, code: 'LAB-LIPID' } });
+
+  if (cbcTest) {
+    const labOrder1 = await prisma.labOrder.upsert({
+      where: { orderCode: 'LAB-ORD-2026-0001' },
+      update: {},
+      create: {
+        orderCode: 'LAB-ORD-2026-0001',
+        patientId: patientObj.id,
+        doctorId: doctorUser1.id,
+        hospitalId: hospital.id,
+        testId: cbcTest.id,
+        testName: cbcTest.name,
+        priority: 'ROUTINE',
+        status: 'VERIFIED'
+      }
+    });
+
+    await prisma.labReport.upsert({
+      where: { orderId: labOrder1.id },
+      update: {},
+      create: {
+        orderId: labOrder1.id,
+        patientId: patientObj.id,
+        hospitalId: hospital.id,
+        labTechUserId: labUser.id,
+        reportDataJson: JSON.stringify({
+          hemoglobin: { value: 14.8, unit: 'g/dL', normal: '13.5-17.5' },
+          wbc: { value: 6.8, unit: 'k/uL', normal: '4.5-11.0' },
+          platelets: { value: 245, unit: 'k/uL', normal: '150-450' }
+        }),
+        summary: 'Complete Blood Count within normal physiological limits.',
+        aiInterpretation: 'Hematologic parameters indicate normal oxygen transport and no signs of acute infection or cytopenia.',
+        status: 'VERIFIED',
+        verifiedAt: new Date()
+      }
+    });
+  }
+
+  if (lipidTest) {
+    await prisma.labOrder.upsert({
+      where: { orderCode: 'LAB-ORD-2026-0002' },
+      update: {},
+      create: {
+        orderCode: 'LAB-ORD-2026-0002',
+        patientId: patient3.id,
+        doctorId: doctorUser1.id,
+        hospitalId: hospital.id,
+        testId: lipidTest.id,
+        testName: lipidTest.name,
+        priority: 'ROUTINE',
+        status: 'ORDERED'
+      }
+    });
+  }
+
+  // 19. Seed Inpatient Admission
+  const genWard = await prisma.ward.findFirst({ where: { hospitalId: hospital.id, code: 'WARD-GEN-A' } });
+  const bedGen1 = await prisma.bed.findFirst({ where: { hospitalId: hospital.id, bedNumber: 'GEN-01' } });
+
+  if (genWard && bedGen1) {
+    await prisma.admission.upsert({
+      where: { admissionCode: 'ADM-2026-0001' },
+      update: {},
+      create: {
+        admissionCode: 'ADM-2026-0001',
+        patientId: patient3.id,
+        hospitalId: hospital.id,
+        departmentId: deptMap['CARD'],
+        doctorId: doctorUser1.id,
+        wardId: genWard.id,
+        bedId: bedGen1.id,
+        admissionReason: 'Chest pain observation and cardiovascular telemetry',
+        diagnosis: 'Unstable Angina - Rule Out Acute Coronary Syndrome',
+        status: 'ADMITTED'
+      }
+    });
+  }
+
   console.log('✅ Nexo Medico AI Database Seeding Completed Successfully!');
   console.log('----------------------------------------------------');
   console.log('🔑 Credentials summary:');

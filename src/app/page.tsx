@@ -56,6 +56,9 @@ export default function LandingPage() {
   const [pendingDemoLogin, setPendingDemoLogin] = useState<{ email: string; redirect: string } | null>(null);
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpLoading, setOtpLoading] = useState(false);
+  const [demoChallengeToken, setDemoChallengeToken] = useState('');
+  const [demoMaskedEmail, setDemoMaskedEmail] = useState('');
+  const [demoOtpError, setDemoOtpError] = useState('');
 
   const [stats, setStats] = useState<any>({
     hospitals: '126+',
@@ -96,30 +99,86 @@ export default function LandingPage() {
       .finally(() => setHospitalsLoading(false));
   }, []);
 
-  const handleQuickRoleLogin = (demoEmail: string, roleRedirect: string) => {
+  const handleQuickRoleLogin = async (demoEmail: string, roleRedirect: string) => {
     setPendingDemoLogin({ email: demoEmail, redirect: roleRedirect });
-    setShowOtpModal(true);
-  };
-
-  const handleOtpSuccess = async () => {
-    if (!pendingDemoLogin) return;
     setOtpLoading(true);
+    setDemoOtpError('');
+
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: pendingDemoLogin.email, password: 'password123' })
+        body: JSON.stringify({ email: demoEmail, password: 'password123' })
       });
       const data = await res.json();
-      if (res.ok) {
-        login(data.token, data.user);
-        window.location.href = pendingDemoLogin.redirect;
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to authenticate demo user');
       }
-    } catch (err) {
-      console.error(err);
+
+      if (data.requiresOtp) {
+        setDemoChallengeToken(data.challengeToken);
+        setDemoMaskedEmail(data.maskedEmail || demoEmail);
+        setShowOtpModal(true);
+      } else if (data.token && data.user) {
+        login(data.token, data.user);
+        window.location.href = roleRedirect;
+      }
+    } catch (err: any) {
+      console.error('Demo login initiation error:', err);
+      alert(err.message || 'Could not initiate demo login');
     } finally {
       setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyDemoOtp = async (otpCode: string) => {
+    if (!pendingDemoLogin || !demoChallengeToken) return;
+    setOtpLoading(true);
+    setDemoOtpError('');
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'verify_login_otp',
+          challengeToken: demoChallengeToken,
+          otpCode
+        })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'OTP verification failed');
+      }
+
+      login(data.token, data.user);
       setShowOtpModal(false);
+      window.location.href = pendingDemoLogin.redirect;
+    } catch (err: any) {
+      setDemoOtpError(err.message || 'Verification error');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleResendDemoOtp = async () => {
+    if (!demoChallengeToken) return;
+    const res = await fetch('/api/auth/otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'resend_otp',
+        challengeToken: demoChallengeToken
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to resend code');
+    }
+    if (data.challengeToken) {
+      setDemoChallengeToken(data.challengeToken);
     }
   };
 
@@ -889,14 +948,16 @@ export default function LandingPage() {
       {/* CONTACT US SUPPORT MODAL ON LANDING PAGE */}
       <ContactUsModal isOpen={showContactModal} onClose={() => setShowContactModal(false)} />
 
-      {/* MOCK 2FA OTP MODAL FOR QUICK ROLE LOGINS */}
+      {/* 2FA OTP MODAL FOR QUICK ROLE LOGINS */}
       <MockOtpModal
         isOpen={showOtpModal}
         onClose={() => setShowOtpModal(false)}
-        onSuccess={handleOtpSuccess}
-        destinationText={pendingDemoLogin?.email || 'Quick Role Account'}
-        title="2FA Demo Security Verification"
+        onVerify={handleVerifyDemoOtp}
+        onResend={handleResendDemoOtp}
+        destinationText={demoMaskedEmail || pendingDemoLogin?.email || 'Authorized Role Email'}
+        title="Institutional 2FA Verification"
         loading={otpLoading}
+        error={demoOtpError}
       />
     </div>
   );

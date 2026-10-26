@@ -707,17 +707,17 @@ export const GlobalHeader: React.FC<GlobalHeaderProps> = ({ onToggleMobileMenu }
     <PatientEmergencyQrModal
       isOpen={showQrPassportModal}
       onClose={() => setShowQrPassportModal(false)}
-      patientData={{
-        patientId: (user as any)?.patientCode || user?.id || 'NEXO-PAT-000002',
-        fullName: user?.name || 'Patient User',
-        bloodGroup: (user as any)?.bloodGroup || 'O+',
-        phone: (user as any)?.phone || '+1 (555) 012-3456',
-        allergies: (user as any)?.allergies || 'Penicillin, Sulfa, Peanuts',
-        conditions: (user as any)?.conditions || 'Type 1 Diabetes, Mild Asthma',
-        emergencyContactName: (user as any)?.emergencyContactName || 'Emergency Contact',
-        emergencyContactPhone: (user as any)?.emergencyContactPhone || '+1 (555) 012-3456',
+      patientData={user?.role === 'PATIENT' ? {
+        patientId: (user as any)?.patientCode || user?.id || '',
+        fullName: user?.name || '',
+        bloodGroup: (user as any)?.bloodGroup || '',
+        phone: (user as any)?.phone || '',
+        allergies: (user as any)?.allergies || '',
+        conditions: (user as any)?.conditions || '',
+        emergencyContactName: (user as any)?.emergencyContactName || '',
+        emergencyContactPhone: (user as any)?.emergencyContactPhone || '',
         resuscitationStatus: 'Full Code / Advance Directive Registered'
-      }}
+      } : undefined}
     />
     </>
   );

@@ -5,6 +5,7 @@ import { createAuditLog } from '@/lib/audit';
 import { addGlobalHospital } from '@/lib/hospitalStore';
 import { ALL_INDIAN_STATES_AND_UTS } from '@/lib/indiaLocations';
 import { generateNextHospitalRegistrationNo } from '@/lib/registrationNumber';
+import { verifyOtpChallenge } from '@/lib/otpService';
 
 export async function GET(req: NextRequest) {
   try {
@@ -41,8 +42,39 @@ export async function POST(req: NextRequest) {
     numberBeds,
     adminName,
     adminEmail,
-    adminPassword
+    adminPassword,
+    challengeToken,
+    otpCode
   } = body;
+
+  // 0. Verify Mandatory Registration OTP Challenge
+  if (!challengeToken || !otpCode) {
+    return NextResponse.json({
+      error: 'Email verification challenge token and 6-digit OTP code are required.',
+      field: 'otpCode'
+    }, { status: 400 });
+  }
+
+  const verification = await verifyOtpChallenge({
+    challengeToken,
+    otpCode,
+    purpose: 'REGISTRATION'
+  });
+
+  if (!verification.valid) {
+    return NextResponse.json({
+      error: verification.error || 'Invalid or expired OTP verification code.',
+      field: 'otpCode'
+    }, { status: 400 });
+  }
+
+  const cleanAdminEmail = adminEmail ? adminEmail.toLowerCase().trim() : '';
+  if (verification.email && verification.email.toLowerCase().trim() !== cleanAdminEmail) {
+    return NextResponse.json({
+      error: 'OTP was verified for a different email address. Please request a new verification code.',
+      field: 'adminEmail'
+    }, { status: 400 });
+  }
 
   // 1. Strict required field validation
   if (!hospitalName?.trim()) {
@@ -134,7 +166,7 @@ export async function POST(req: NextRequest) {
     });
     if (existingHospEmail) {
       return NextResponse.json({
-        error: 'Email is already used. Please use a different email address.',
+        error: 'Email already exists. Please use a different email address.',
         field: 'email'
       }, { status: 409 });
     }
@@ -145,23 +177,26 @@ export async function POST(req: NextRequest) {
     });
     if (existingAdminUser) {
       return NextResponse.json({
-        error: 'Email is already used. Please use a different email address.',
+        error: 'Email already exists. Please use a different email address.',
         field: 'adminEmail'
       }, { status: 409 });
     }
 
-    // 7. Check for duplicate hospital phone number
-    const existingHospPhone = await prisma.hospital.findFirst({
-      where: {
-        OR: [
-          { phone: finalPhone },
-          ...(phoneDigits.length >= 10 ? [{ phone: { endsWith: phoneDigits.slice(-10) } }] : [])
-        ]
+    // 7. Check for duplicate hospital phone number (with robust digit normalization)
+    const allHospitals = await prisma.hospital.findMany({ select: { id: true, phone: true } });
+    const duplicatePhoneHosp = allHospitals.find(h => {
+      if (!h.phone) return false;
+      const hDigits = h.phone.replace(/\D/g, '');
+      if (h.phone.trim() === finalPhone) return true;
+      if (phoneDigits.length >= 7 && hDigits.length >= 7) {
+        if (phoneDigits === hDigits) return true;
+        if (phoneDigits.length >= 10 && hDigits.length >= 10 && phoneDigits.slice(-10) === hDigits.slice(-10)) return true;
       }
+      return false;
     });
-    if (existingHospPhone) {
+    if (duplicatePhoneHosp) {
       return NextResponse.json({
-        error: 'Phone number is already used. Please use a different phone number.',
+        error: 'Phone number already exists. Please use a different phone number.',
         field: 'phone'
       }, { status: 409 });
     }
@@ -175,7 +210,7 @@ export async function POST(req: NextRequest) {
         finalRegNo = await generateNextHospitalRegistrationNo();
       } else {
         return NextResponse.json({
-          error: 'Registration number is already in use. Please check the registration number.',
+          error: 'Registration number already exists. Please check the registration number.',
           field: 'registrationNo'
         }, { status: 409 });
       }
@@ -303,7 +338,8 @@ export async function POST(req: NextRequest) {
       email: adminUser.email,
       name: adminUser.name,
       role: adminUser.role,
-      hospitalId: hospital.id
+      hospitalId: hospital.id,
+      hospitalName: hospital.name
     });
 
     const response = NextResponse.json({
@@ -328,9 +364,10 @@ export async function POST(req: NextRequest) {
       token
     }, { status: 201 });
 
+    const isHttps = req.headers.get('x-forwarded-proto') === 'https' || req.nextUrl.protocol === 'https:';
     response.cookies.set('nexo_token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isHttps,
       sameSite: 'lax',
       path: '/',
       maxAge: 86400
@@ -347,27 +384,27 @@ export async function POST(req: NextRequest) {
 
       if (metaTarget.includes('email')) {
         return NextResponse.json({
-          error: 'Email is already used. Please use a different email address.',
+          error: 'Email already exists. Please use a different email address.',
           field: metaTarget.includes('User') || metaTarget.includes('admin') ? 'adminEmail' : 'email'
         }, { status: 409 });
       }
 
       if (metaTarget.includes('phone')) {
         return NextResponse.json({
-          error: 'Phone number is already used. Please use a different phone number.',
+          error: 'Phone number already exists. Please use a different phone number.',
           field: 'phone'
         }, { status: 409 });
       }
 
       if (metaTarget.includes('registrationNo')) {
         return NextResponse.json({
-          error: 'Registration number is already in use. Please check the registration number.',
+          error: 'Registration number already exists. Please check the registration number.',
           field: 'registrationNo'
         }, { status: 409 });
       }
 
       return NextResponse.json({
-        error: 'Email is already used. Please use a different email address.',
+        error: 'Email already exists. Please use a different email address.',
         field: 'email'
       }, { status: 409 });
     }

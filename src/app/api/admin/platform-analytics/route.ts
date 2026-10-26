@@ -23,10 +23,34 @@ export async function GET(req: NextRequest) {
   let aiAnalysesCount = 0;
 
   const user = getUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Block suspended hospital tenants from analytics
+  if (user.role !== 'SUPER_ADMIN' && user.hospitalId) {
+    const hosp = await prisma.hospital.findUnique({
+      where: { id: user.hospitalId },
+      select: { status: true }
+    });
+    if (!hosp) {
+      return NextResponse.json({
+        error: 'Account not found. Please contact the platform administrator if you need assistance.',
+        code: 'ACCOUNT_NOT_FOUND'
+      }, { status: 401 });
+    }
+    if (hosp.status === 'SUSPENDED') {
+      return NextResponse.json({
+        error: 'Your hospital account has been suspended. Please contact the platform administrator for assistance.',
+        code: 'HOSPITAL_SUSPENDED'
+      }, { status: 403 });
+    }
+  }
+
+  const isHospitalScope = Boolean(user && user.role === 'HOSPITAL_ADMIN' && user.hospitalId);
+  const hospFilter = isHospitalScope ? { hospitalId: user.hospitalId! } : {};
 
   try {
-    const isHospitalScope = user && user.role === 'HOSPITAL_ADMIN' && user.hospitalId;
-    const hospFilter = isHospitalScope ? { hospitalId: user.hospitalId! } : {};
 
     const results = await Promise.all([
       isHospitalScope ? 1 : prisma.hospital.count(),
@@ -110,20 +134,35 @@ export async function GET(req: NextRequest) {
   ];
 
   return NextResponse.json({
-    summaryCards: {
-      totalHospitals: totalRegisteredHospitals,
-      activeHospitals: totalRegisteredHospitals,
-      totalUsers: usersCount || 18,
-      activeUsers: activeUsersCount || 18,
-      totalPatients: patientsCount || 24,
-      totalDoctors: totalRegisteredDoctors,
-      totalHealthcareStaff: totalRegisteredDoctors + (nursesCount || 16) + (staffCount || 8),
-      totalAppointments: appointmentsCount || 34,
-      currentAdmissions: admissionsCount || 15,
-      totalPrescriptions: prescriptionsCount || 42,
-      totalLabReports: labOrdersCount || 28,
-      totalAiAnalyses: aiAnalysesCount || 19
-    },
+    summaryCards: isHospitalScope
+      ? {
+          totalHospitals: 1,
+          activeHospitals: 1,
+          totalUsers: usersCount,
+          activeUsers: activeUsersCount,
+          totalPatients: patientsCount,
+          totalDoctors: doctorsCount,
+          totalHealthcareStaff: doctorsCount + nursesCount + staffCount,
+          totalAppointments: appointmentsCount,
+          currentAdmissions: admissionsCount,
+          totalPrescriptions: prescriptionsCount,
+          totalLabReports: labOrdersCount,
+          totalAiAnalyses: aiAnalysesCount
+        }
+      : {
+          totalHospitals: totalRegisteredHospitals,
+          activeHospitals: totalRegisteredHospitals,
+          totalUsers: usersCount,
+          activeUsers: activeUsersCount,
+          totalPatients: patientsCount,
+          totalDoctors: totalRegisteredDoctors,
+          totalHealthcareStaff: totalRegisteredDoctors + nursesCount + staffCount,
+          totalAppointments: appointmentsCount,
+          currentAdmissions: admissionsCount,
+          totalPrescriptions: prescriptionsCount,
+          totalLabReports: labOrdersCount,
+          totalAiAnalyses: aiAnalysesCount
+        },
     growthCharts: {
       hospitalGrowth,
       patientGrowth,

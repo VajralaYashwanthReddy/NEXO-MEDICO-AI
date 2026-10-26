@@ -86,7 +86,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers,
         credentials: 'include'
       })
-        .then(res => {
+        .then(async (res) => {
+          if (res.status === 403) {
+            try {
+              const data = await res.json();
+              if (data.code === 'HOSPITAL_SUSPENDED' || (data.error && data.error.includes('suspended'))) {
+                setUser(null);
+                if (typeof window !== 'undefined' && window.location.pathname !== '/suspended') {
+                  router.push('/suspended');
+                }
+                return null;
+              }
+            } catch (e) {}
+            throw new Error('Forbidden');
+          }
           if (!res.ok) throw new Error('Unauthenticated');
           return res.json();
         })

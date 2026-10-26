@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState, Suspense, useMemo } from 'react';
 import {
   Pill,
   Plus,
@@ -17,13 +17,22 @@ import {
   Layers,
   ChevronRight,
   Sparkles,
-  Info
+  Info,
+  Printer,
+  Trash2,
+  Eye,
+  FileText
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 
 function PrescriptionFormContent() {
   const searchParams = useSearchParams();
+  const { user } = useAuth();
+
   const preselectedPatientId = searchParams.get('patientId') || '';
+  const preselectedDiagnosis = searchParams.get('diagnosis') || '';
+  const preselectedAppointmentId = searchParams.get('appointmentId') || '';
 
   // Mode: 'PRESCRIPTION' | 'LAB_ORDER'
   const [activeTab, setActiveTab] = useState<'PRESCRIPTION' | 'LAB_ORDER'>('PRESCRIPTION');
@@ -33,6 +42,9 @@ function PrescriptionFormContent() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
+
+  // Linked Clinical Diagnosis
+  const [linkedDiagnosis, setLinkedDiagnosis] = useState(preselectedDiagnosis);
 
   // Pharmacy Inventory Stock State
   const [pharmacyStock, setPharmacyStock] = useState<any[]>([]);
@@ -72,6 +84,10 @@ function PrescriptionFormContent() {
   const [submitting, setSubmitting] = useState(false);
   const [rxSuccessMessage, setRxSuccessMessage] = useState('');
   const [labSuccessMessage, setLabSuccessMessage] = useState('');
+  const [createdPrescriptionCode, setCreatedPrescriptionCode] = useState('');
+
+  // Print Preview Modal State
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   // Load patient, pharmacy stock, and lab test catalog
   useEffect(() => {
@@ -96,17 +112,11 @@ function PrescriptionFormContent() {
 
     // 2. Fetch Pharmacy Medicines Inventory Stock
     const fetchPharmacyStock = () => {
-      const jwt = typeof window !== 'undefined' ? localStorage.getItem('nexo_jwt') : null;
-      fetch('/api/pharmacy/medicines', {
-        headers: {
-          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {})
-        }
-      })
+      fetch('/api/pharmacy/medicines')
         .then(res => res.json())
         .then(data => {
           const meds = (data.medicines || []).map((m: any) => {
             const totalQty = (m.inventoryItems || []).reduce((acc: number, inv: any) => acc + inv.quantity, 0);
-            const unitPrice = m.inventoryItems?.[0]?.unitPrice || 50;
             return {
               id: m.id,
               code: m.code,
@@ -114,7 +124,6 @@ function PrescriptionFormContent() {
               genericName: m.genericName,
               category: m.category,
               totalQty,
-              unitPrice,
               status: totalQty === 0 ? 'OUT_OF_STOCK' : totalQty <= 15 ? 'LOW_STOCK' : 'IN_STOCK'
             };
           });
@@ -143,15 +152,16 @@ function PrescriptionFormContent() {
     };
 
     fetchPharmacyStock();
-    const stockInterval = setInterval(fetchPharmacyStock, 4000);
+    const stockInterval = setInterval(fetchPharmacyStock, 5000);
 
     // 3. Fetch Lab Test Catalog
     fetch('/api/laboratory/orders')
       .then(res => res.json())
       .then(data => {
-        setLabTestCatalog(data.tests || []);
-        if (data.tests && data.tests.length > 0) {
-          setSelectedLabTestId(data.tests[0].id);
+        const tests = data.availableTests || data.tests || [];
+        setLabTestCatalog(tests);
+        if (tests.length > 0) {
+          setSelectedLabTestId(tests[0].id);
         }
       })
       .catch(err => console.error(err))
@@ -260,30 +270,15 @@ function PrescriptionFormContent() {
         body: JSON.stringify({
           patientId: selectedPatient.id,
           medicines,
-          instructions,
+          instructions: `${instructions}${linkedDiagnosis ? `\n[Linked Diagnosis]: ${linkedDiagnosis}` : ''}`,
           status: 'ISSUED'
         })
       });
       const data = await res.json();
 
       if (res.ok) {
+        setCreatedPrescriptionCode(data.prescription.prescriptionCode);
         setRxSuccessMessage(`Digital Prescription issued & sent directly to Hospital Pharmacy Queue! Code: ${data.prescription.prescriptionCode}`);
-        setMedicines([
-          {
-            medicineId: pharmacyStock[0]?.id || '',
-            name: pharmacyStock[0]?.name || 'Paracetamol',
-            strength: '500 mg',
-            dosage: '1 tablet',
-            route: 'Oral',
-            frequency: 'Twice daily',
-            durationDays: 5,
-            quantity: 10,
-            foodRelation: 'After food',
-            instructions: '',
-            stockQty: pharmacyStock[0]?.totalQty ?? null,
-            isCustom: false
-          }
-        ]);
         setSafetyAlerts([]);
       } else {
         alert(data.error || 'Failed to issue prescription');
@@ -309,7 +304,7 @@ function PrescriptionFormContent() {
           patientId: selectedPatient.id,
           testId: selectedLabTestId,
           priority: labPriority,
-          notes: labNotes
+          notes: `${labNotes}${linkedDiagnosis ? ` [Indication: ${linkedDiagnosis}]` : ''}`
         })
       });
       const data = await res.json();
@@ -340,7 +335,7 @@ function PrescriptionFormContent() {
             Physician Clinical Order & Dispatch Center
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Prescribe directly from hospital pharmacy stock & dispatch lab test orders to hospital queues in real-time
+            Prescribe directly from hospital pharmacy inventory with live stock indicators and multi-line safety verification.
           </p>
         </div>
 
@@ -374,7 +369,7 @@ function PrescriptionFormContent() {
       {/* Global Universal Patient Search Bar */}
       <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
         <label className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-          <Globe className="w-4 h-4 text-blue-600" /> Universal Patient Identity Search (Across All Hospitals) *
+          <Globe className="w-4 h-4 text-blue-600" /> Universal Patient Identity Search *
         </label>
 
         <div className="relative">
@@ -449,10 +444,33 @@ function PrescriptionFormContent() {
       {activeTab === 'PRESCRIPTION' && (
         <form onSubmit={handleSubmitPrescription} className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-6 text-xs">
           {rxSuccessMessage && (
-            <div className="p-4 bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-black rounded-2xl flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" /> {rxSuccessMessage}
+            <div className="p-4 bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-black rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" /> {rxSuccessMessage}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPrintModal(true)}
+                className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm"
+              >
+                <Printer className="w-3.5 h-3.5" /> Print Prescription
+              </button>
             </div>
           )}
+
+          {/* Linked Diagnosis Field */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1">
+            <label className="font-extrabold text-slate-900 block text-xs">
+              Linked Clinical Diagnosis / Indication
+            </label>
+            <input
+              type="text"
+              value={linkedDiagnosis}
+              onChange={(e) => setLinkedDiagnosis(e.target.value)}
+              placeholder="e.g. Essential Hypertension / Acute Bronchitis"
+              className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 font-bold text-blue-900 bg-white"
+            />
+          </div>
 
           {/* Prescribed Medicines List */}
           <div className="space-y-4">
@@ -462,7 +480,7 @@ function PrescriptionFormContent() {
                   <Package className="w-5 h-5 text-emerald-600" /> Prescribed Hospital Pharmacy Medicines List
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Select medicines from your hospital's real pharmacy inventory with live stock levels
+                  Select medicines from real hospital pharmacy stock with live stock quantity tracking.
                 </p>
               </div>
               <button
@@ -477,131 +495,152 @@ function PrescriptionFormContent() {
             <div className="space-y-4">
               {medicines.map((med, idx) => (
                 <div key={idx} className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-3 relative">
-                  <div className="flex items-center justify-between">
-                    <span className="font-black text-slate-900 text-xs flex items-center gap-2">
-                      Medicine #{idx + 1}
+                  <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-slate-800">Medicine #{idx + 1}</span>
+                      {/* Live Stock Badge */}
                       {med.stockQty !== null && (
-                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
-                          med.stockQty === 0
-                            ? 'bg-rose-100 text-rose-800 border-rose-200'
-                            : med.stockQty <= 15
-                            ? 'bg-amber-100 text-amber-800 border-amber-200'
-                            : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                        <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-extrabold ${
+                          med.stockQty === 0 ? 'bg-rose-100 text-rose-800' :
+                          med.stockQty <= 15 ? 'bg-amber-100 text-amber-800' :
+                          'bg-emerald-100 text-emerald-800'
                         }`}>
-                          {med.stockQty === 0 ? '🔴 OUT OF STOCK (0 units)' : `🟢 In Pharmacy Stock: ${med.stockQty} units`}
+                          {med.stockQty === 0 ? 'OUT OF STOCK' : `${med.stockQty} in stock`}
                         </span>
                       )}
-                    </span>
-
+                    </div>
                     {medicines.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeMedicineRow(idx)}
-                        className="text-rose-600 hover:text-rose-800 font-extrabold text-xs"
+                        className="text-rose-600 hover:text-rose-800 font-bold text-xs flex items-center gap-1"
                       >
-                        Remove
+                        <Trash2 className="w-3.5 h-3.5" /> Remove
                       </button>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                    {/* Select Medicine from Hospital Pharmacy Stock */}
-                    <div>
-                      <label className="font-extrabold text-slate-900 block mb-1">
-                        Medicine Name (Hospital Pharmacy Inventory) *
-                      </label>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="md:col-span-2">
+                      <label className="font-extrabold text-slate-700 block mb-1">Select from Inventory</label>
                       <select
-                        required
                         value={med.medicineId}
                         onChange={(e) => handleSelectMedicineFromStock(idx, e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-extrabold bg-white text-slate-900 shadow-2xs"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold text-slate-900"
                       >
-                        <option value="">-- Select Medicine from Pharmacy Stock --</option>
-                        {pharmacyStock.map(m => (
-                          <option key={m.id} value={m.id} className="font-bold text-slate-900 bg-white">
-                            {m.name} ({m.genericName}) — Stock: {m.totalQty} units
+                        <option value="">-- Choose from Pharmacy Inventory --</option>
+                        {pharmacyStock.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.category}) — {p.totalQty} in stock
                           </option>
                         ))}
                       </select>
                     </div>
 
                     <div>
-                      <label className="font-extrabold text-slate-900 block mb-1">Strength</label>
+                      <label className="font-extrabold text-slate-700 block mb-1">Medication Name / Custom</label>
+                      <input
+                        type="text"
+                        value={med.name}
+                        onChange={(e) => updateMedicineField(idx, 'name', e.target.value)}
+                        placeholder="e.g. Amoxicillin 500mg"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className="font-bold text-slate-600 block mb-1">Strength</label>
                       <input
                         type="text"
                         value={med.strength}
                         onChange={(e) => updateMedicineField(idx, 'strength', e.target.value)}
-                        placeholder="e.g. 500 mg"
-                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-extrabold bg-white text-slate-900 shadow-2xs"
+                        className="w-full px-3 py-2 border rounded-xl bg-white"
+                        placeholder="500 mg"
                       />
                     </div>
 
                     <div>
-                      <label className="font-extrabold text-slate-900 block mb-1">Dosage Unit</label>
+                      <label className="font-bold text-slate-600 block mb-1">Dosage</label>
                       <input
                         type="text"
                         value={med.dosage}
                         onChange={(e) => updateMedicineField(idx, 'dosage', e.target.value)}
-                        placeholder="e.g. 1 tablet"
-                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-extrabold bg-white text-slate-900 shadow-2xs"
+                        className="w-full px-3 py-2 border rounded-xl bg-white"
+                        placeholder="1 tablet"
                       />
                     </div>
 
                     <div>
-                      <label className="font-extrabold text-slate-900 block mb-1">Frequency *</label>
+                      <label className="font-bold text-slate-600 block mb-1">Frequency</label>
                       <select
-                        required
                         value={med.frequency}
                         onChange={(e) => updateMedicineField(idx, 'frequency', e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-extrabold bg-white text-slate-900 shadow-2xs"
+                        className="w-full px-3 py-2 border rounded-xl bg-white font-semibold"
                       >
-                        <option value="Morning Only (1-0-0)">Morning Only (1-0-0)</option>
-                        <option value="Afternoon Only (0-1-0)">Afternoon Only (0-1-0)</option>
-                        <option value="Evening Only (0-0-1)">Evening Only (0-0-1)</option>
-                        <option value="Morning & Evening (1-0-1)">Morning & Evening (1-0-1)</option>
-                        <option value="Morning, Afternoon & Evening (1-1-1)">Morning, Afternoon & Evening (1-1-1)</option>
-                        <option value="Thrice Daily (TDS / Every 8 hours)">Thrice Daily (TDS / Every 8 hours)</option>
-                        <option value="Four Times Daily (QDS / Every 6 hours)">Four Times Daily (QDS / Every 6 hours)</option>
-                        <option value="Day by Day / Alternate Days (QOD)">Day by Day / Alternate Days (QOD)</option>
-                        <option value="Once Daily (OD)">Once Daily (OD)</option>
-                        <option value="As Needed / When Required (PRN)">As Needed / When Required (PRN)</option>
-                        <option value="At Bedtime (HS)">At Bedtime (HS)</option>
+                        <option value="Once daily">Once daily (OD)</option>
+                        <option value="Twice daily">Twice daily (BD)</option>
+                        <option value="Thrice daily">Thrice daily (TDS)</option>
+                        <option value="Four times daily">Four times daily (QID)</option>
+                        <option value="Every 8 hours">Every 8 hours</option>
+                        <option value="SOS / As needed">SOS / As needed</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-slate-600 block mb-1">Route</label>
+                      <select
+                        value={med.route}
+                        onChange={(e) => updateMedicineField(idx, 'route', e.target.value)}
+                        className="w-full px-3 py-2 border rounded-xl bg-white font-semibold"
+                      >
+                        <option value="Oral">Oral</option>
+                        <option value="Intravenous (IV)">Intravenous (IV)</option>
+                        <option value="Intramuscular (IM)">Intramuscular (IM)</option>
+                        <option value="Topical">Topical</option>
+                        <option value="Inhalation">Inhalation</option>
                       </select>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="font-extrabold text-slate-900 block mb-1">Duration (Days)</label>
+                      <label className="font-bold text-slate-600 block mb-1">Duration (Days)</label>
                       <input
                         type="number"
                         value={med.durationDays}
-                        onChange={(e) => updateMedicineField(idx, 'durationDays', e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-black text-slate-900 bg-white shadow-2xs"
+                        onChange={(e) => {
+                          const d = parseInt(e.target.value) || 1;
+                          updateMedicineField(idx, 'durationDays', d);
+                          updateMedicineField(idx, 'quantity', d * 2);
+                        }}
+                        className="w-full px-3 py-2 border rounded-xl bg-white"
                       />
                     </div>
 
                     <div>
-                      <label className="font-extrabold text-slate-900 block mb-1">Relation to Food</label>
+                      <label className="font-bold text-slate-600 block mb-1">Quantity (Units)</label>
+                      <input
+                        type="number"
+                        value={med.quantity}
+                        onChange={(e) => updateMedicineField(idx, 'quantity', parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-2 border rounded-xl bg-white font-mono font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-slate-600 block mb-1">Relation to Food</label>
                       <select
                         value={med.foodRelation}
                         onChange={(e) => updateMedicineField(idx, 'foodRelation', e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-extrabold bg-white text-slate-900 shadow-2xs"
+                        className="w-full px-3 py-2 border rounded-xl bg-white"
                       >
                         <option value="After food">After food</option>
                         <option value="Before food">Before food</option>
                         <option value="With food">With food</option>
+                        <option value="Empty stomach">Empty stomach</option>
                       </select>
-                    </div>
-
-                    <div>
-                      <label className="font-extrabold text-slate-900 block mb-1">Total Quantity Prescribed</label>
-                      <input
-                        type="number"
-                        value={med.quantity}
-                        onChange={(e) => updateMedicineField(idx, 'quantity', e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-black text-emerald-700 bg-white shadow-2xs"
-                      />
                     </div>
                   </div>
                 </div>
@@ -609,14 +648,14 @@ function PrescriptionFormContent() {
             </div>
           </div>
 
-          {/* Additional Instructions */}
+          {/* Instructions */}
           <div>
-            <label className="font-extrabold text-slate-900 block mb-1">Doctor Prescribing Instructions</label>
+            <label className="font-extrabold text-slate-900 block mb-1">General Prescribing Instructions</label>
             <textarea
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               rows={2}
-              className="w-full px-3.5 py-2 border border-slate-300 rounded-xl font-semibold text-slate-900 bg-white shadow-2xs"
+              className="w-full px-3.5 py-2 border border-slate-300 rounded-xl font-semibold text-slate-900 bg-white"
             />
           </div>
 
@@ -634,17 +673,27 @@ function PrescriptionFormContent() {
             </div>
           )}
 
-          {/* Action Buttons */}
+          {/* Actions Bar */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t">
-            <button
-              type="button"
-              onClick={checkDrugSafety}
-              disabled={checkingSafety}
-              className="px-4 py-2.5 bg-purple-100 hover:bg-purple-200 text-purple-800 font-extrabold rounded-xl flex items-center gap-1.5 transition-all"
-            >
-              <ShieldAlert className="w-4 h-4 text-purple-600" />
-              {checkingSafety ? 'Checking AI Safety...' : 'Run Drug Safety & Allergy Interaction Check'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={checkDrugSafety}
+                disabled={checkingSafety}
+                className="px-4 py-2.5 bg-purple-100 hover:bg-purple-200 text-purple-800 font-extrabold rounded-xl flex items-center gap-1.5 transition-all"
+              >
+                <ShieldAlert className="w-4 h-4 text-purple-600" />
+                {checkingSafety ? 'Checking Safety...' : 'Run Drug Safety Check'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowPrintModal(true)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold rounded-xl flex items-center gap-1.5 transition-all"
+              >
+                <Eye className="w-4 h-4 text-slate-600" /> Preview Prescription
+              </button>
+            </div>
 
             <button
               type="submit"
@@ -652,7 +701,7 @@ function PrescriptionFormContent() {
               className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-xl shadow-lg flex items-center gap-2 transition-all shrink-0"
             >
               <Send className="w-4 h-4" />
-              {submitting ? 'Dispatching...' : 'Issue & Send Digital Prescription to Pharmacy Direct'}
+              {submitting ? 'Dispatching...' : 'Issue & Send Digital Prescription to Pharmacy Queue'}
             </button>
           </div>
         </form>
@@ -674,7 +723,7 @@ function PrescriptionFormContent() {
                   <FlaskConical className="w-5 h-5 text-amber-600" /> Select Laboratory Diagnostic Test
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  Select diagnostic tests from your hospital's laboratory catalog to send directly to the lab queue
+                  Select diagnostic tests from your hospital's laboratory catalog to send directly to the lab queue.
                 </p>
               </div>
             </div>
@@ -754,10 +803,127 @@ function PrescriptionFormContent() {
               className="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-sm rounded-xl shadow-lg flex items-center gap-2 transition-all shrink-0"
             >
               <Send className="w-4 h-4" />
-              {submitting ? 'Dispatching...' : 'Submit & Dispatch Order to Laboratory Direct'}
+              {submitting ? 'Dispatching...' : 'Submit & Dispatch Order to Laboratory Queue'}
             </button>
           </div>
         </form>
+      )}
+
+      {/* ========================================================================= */}
+      {/* PRINT-READY PRESCRIPTION MODAL                                            */}
+      {/* ========================================================================= */}
+      {showPrintModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-4">
+              <span className="text-xs font-black uppercase text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg">
+                Official Hospital Medical Prescription
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl flex items-center gap-1 shadow-sm"
+                >
+                  <Printer className="w-3.5 h-3.5" /> Print / PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPrintModal(false)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Prescription Template */}
+            <div className="border-2 border-slate-200 p-6 rounded-2xl space-y-6 bg-white font-sans text-xs">
+              {/* Header */}
+              <div className="flex justify-between items-start border-b pb-4">
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">NEXO MEDICO AI HEALTHCARE</h2>
+                  <p className="text-slate-500">Department of Internal Medicine & Clinical Specialties</p>
+                  <p className="text-[11px] text-slate-400 font-mono">Licensed Central Hospital Medical Center</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl font-black text-blue-700 font-serif italic">℞</span>
+                  <p className="text-[11px] text-slate-400 font-mono mt-1">
+                    Date: {new Date().toLocaleDateString()}
+                  </p>
+                  {createdPrescriptionCode && (
+                    <p className="font-mono font-bold text-slate-800">
+                      Code: {createdPrescriptionCode}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Patient Banner */}
+              {selectedPatient && (
+                <div className="p-3 bg-slate-50 rounded-xl grid grid-cols-2 gap-2 border border-slate-100">
+                  <div>
+                    <span className="text-slate-400 text-[10px] uppercase font-bold block">Patient Name</span>
+                    <strong className="text-slate-900 text-sm">{selectedPatient.fullName}</strong>
+                    <span className="text-slate-500 block font-mono text-[11px]">
+                      {selectedPatient.patientCode} • {selectedPatient.gender}, DOB: {selectedPatient.dob}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-[10px] uppercase font-bold block">Documented Allergies</span>
+                    <strong className="text-rose-600 block">{selectedPatient.allergies || 'No known allergies'}</strong>
+                    {linkedDiagnosis && (
+                      <span className="text-blue-900 font-bold block mt-1">Diagnosis: {linkedDiagnosis}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Medicines Table */}
+              <div className="space-y-2">
+                <h4 className="font-black text-slate-800 uppercase tracking-wider text-[11px]">Medications (Rx)</h4>
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="grid grid-cols-12 bg-slate-50 p-2 font-black text-slate-600 text-[10px] uppercase">
+                    <span className="col-span-5">Medicine & Strength</span>
+                    <span className="col-span-2">Dosage</span>
+                    <span className="col-span-3">Frequency & Food</span>
+                    <span className="col-span-2 text-right">Duration</span>
+                  </div>
+                  {medicines.map((m, i) => (
+                    <div key={i} className="grid grid-cols-12 p-2.5 items-center text-xs">
+                      <span className="col-span-5 font-bold text-slate-900">
+                        {i + 1}. {m.name || 'Medication'} <span className="text-slate-500 font-normal">({m.strength})</span>
+                      </span>
+                      <span className="col-span-2 font-medium text-slate-700">{m.dosage}</span>
+                      <span className="col-span-3 text-slate-600">{m.frequency} ({m.foodRelation})</span>
+                      <span className="col-span-2 text-right font-mono font-bold text-slate-800">{m.durationDays} days</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Instructions */}
+              {instructions && (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <span className="font-bold text-slate-700 block mb-0.5">Instructions:</span>
+                  <p className="text-slate-600">{instructions}</p>
+                </div>
+              )}
+
+              {/* Signature Block */}
+              <div className="pt-8 flex justify-between items-end border-t border-dashed">
+                <span className="text-[10px] text-slate-400 font-mono">
+                  Electronically generated and verified via Nexo Medico AI EMR.
+                </span>
+                <div className="text-right">
+                  <div className="w-40 border-b border-slate-400 mb-1" />
+                  <span className="font-bold text-slate-800 block">Attending Physician</span>
+                  <span className="text-[10px] text-slate-400 font-mono">Signature & Stamp</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -765,7 +931,8 @@ function PrescriptionFormContent() {
 
 export default function DoctorPrescriptionsPage() {
   return (
-    <Suspense fallback={<p className="text-xs text-slate-500 text-center py-10">Loading prescription engine...</p>}>
+    <Suspense fallback={<p className="text-xs text-slate-500 text-center py-10">Loading prescription engine...</p>
+}>
       <PrescriptionFormContent />
     </Suspense>
   );

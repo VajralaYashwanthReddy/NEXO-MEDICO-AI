@@ -23,41 +23,29 @@ export async function GET(req: NextRequest) {
     });
 
     if (!user) {
-      const getFirstValid = (...vals: (string | null | undefined)[]) => {
-        for (const v of vals) {
-          if (v && v !== 'N/A' && v.trim() !== '') return v;
-        }
-        return null;
-      };
+      const res = NextResponse.json({
+        error: 'Account not found. Please contact the platform administrator if you need assistance.',
+        code: 'ACCOUNT_NOT_FOUND'
+      }, { status: 401 });
+      res.cookies.set('nexo_token', '', { maxAge: 0, path: '/' });
+      return res;
+    }
 
-      const globalPatients = getGlobalPatients();
-      const pMatch = globalPatients.find(p => p.userId === userPayload.id || p.id === userPayload.id || p.patientCode === (userPayload as any).patientCode || p.email?.toLowerCase() === userPayload.email?.toLowerCase());
-
-      const sanitizedName = (userPayload.name && userPayload.name !== 'Patient Account' && userPayload.name !== 'Registered Patient')
-        ? userPayload.name
-        : formatNameFromEmail(userPayload.email);
-
-      return NextResponse.json({
-        user: {
-          id: userPayload.id,
-          email: userPayload.email,
-          name: sanitizedName,
-          role: userPayload.role,
-          hospitalId: userPayload.hospitalId,
-          hospitalName: (userPayload as any).hospitalName || (userPayload.role === 'SUPER_ADMIN' ? 'All Platform Tenants' : 'Hospital Organization'),
-          departmentId: userPayload.departmentId || null,
-          patientCode: getFirstValid((userPayload as any).patientCode, pMatch?.patientCode),
-          gender: getFirstValid((userPayload as any).gender, pMatch?.gender),
-          dob: getFirstValid((userPayload as any).dob, pMatch?.dob),
-          phone: getFirstValid((userPayload as any).phone, pMatch?.phone),
-          bloodGroup: getFirstValid((userPayload as any).bloodGroup, pMatch?.bloodGroup),
-          permissions: ['*']
-        }
-      });
+    // Check if hospital tenant is suspended for non-Super Admin users
+    if (user.role !== 'SUPER_ADMIN' && user.hospitalId) {
+      if (user.hospital?.status === 'SUSPENDED') {
+        return NextResponse.json({
+          error: 'Your hospital account has been suspended. Please contact the platform administrator for assistance.',
+          code: 'HOSPITAL_SUSPENDED'
+        }, { status: 403 });
+      }
     }
 
     if (user.status === 'SUSPENDED') {
-      return NextResponse.json({ error: 'Your account is suspended' }, { status: 403 });
+      return NextResponse.json({
+        error: 'Your account is suspended. Please contact system administrator.',
+        code: 'USER_SUSPENDED'
+      }, { status: 403 });
     }
 
     // Get role permissions
@@ -104,7 +92,7 @@ export async function GET(req: NextRequest) {
         patientCode: getFirstValid(user.patientProfile?.patientCode, pMatch?.patientCode, (userPayload as any).patientCode),
         gender: getFirstValid(user.patientProfile?.gender, pMatch?.gender, (userPayload as any).gender),
         dob: getFirstValid(user.patientProfile?.dob, pMatch?.dob, (userPayload as any).dob),
-        phone: getFirstValid(user.patientProfile?.phone, pMatch?.phone, (userPayload as any).phone),
+        phone: getFirstValid(user.phone, user.patientProfile?.phone, user.hospital?.phone, pMatch?.phone, (userPayload as any).phone),
         bloodGroup: getFirstValid(user.patientProfile?.bloodGroup, pMatch?.bloodGroup, (userPayload as any).bloodGroup),
         permissions: user.role === 'SUPER_ADMIN' || user.role === 'HOSPITAL_ADMIN' ? ['*'] : effectivePermissions
       }

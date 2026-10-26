@@ -63,6 +63,7 @@ model User {
   passwordHash String
   name         String
   role         String   // SUPER_ADMIN, HOSPITAL_ADMIN, DOCTOR, NURSE, RECEPTIONIST, PHARMACIST, LAB_TECH, RADIOLOGY_TECH, ICU_STAFF, HR_ADMIN, PATIENT
+  phone        String?
   hospitalId   String?
   hospital     Hospital? @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
   departmentId String?
@@ -77,6 +78,13 @@ model User {
   userPermissions UserPermission[]
   auditLogs       AuditLog[]
   dispensingLogs  DispensingLog[] @relation("DispensedBy")
+  supportIssues       SupportIssue[]        @relation("UserSupportIssues")
+  assignedTickets     SupportIssue[]        @relation("AssignedTickets")
+  supportMessages     SupportMessage[]      @relation("UserSupportMessages")
+  supportTicketEvents SupportTicketEvent[]  @relation("ActorTicketEvents")
+  passwordResetTokens PasswordResetToken[]
+  doctorAppointments  Appointment[]
+  otpChallenges       OtpChallenge[]
 }
 
 model Role {
@@ -209,6 +217,27 @@ model Patient {
   allergies        String?  // Comma-separated or text
   conditions       String?  // Existing chronic conditions
   previousHistory  String?  // Past medical history
+
+  // India-Only Address Fields
+  houseFlat                 String?
+  streetArea                String?
+  landmark                  String?
+  villageWard               String?
+  mandalTaluk               String?
+  city                      String?
+  district                  String?
+  state                     String?
+  country                   String?  @default("IN")
+  pinCode                   String?
+
+  // Dedicated Emergency Contact Fields
+  emergencyContactName      String?
+  emergencyContactRelation  String?
+  emergencyContactPhone     String?
+
+  // Emergency QR Profile
+  emergencyProfile          PatientEmergencyProfile?
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -224,6 +253,61 @@ model Patient {
   icuBedLogs           ICUBedLog[]
   aiPredictionLogs     AIPredictionLog[]
   drugInteractionAlerts DrugInteractionAlert[]
+}
+
+model PatientEmergencyProfile {
+  id                    String                  @id @default(uuid())
+  patientId             String                  @unique
+  patient               Patient                 @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  publicToken           String                  @unique // Cryptographically secure random token
+  shortId               String                  @unique // e.g. EMG-7829-1940
+  status                String                  @default("ACTIVE") // ACTIVE, REVOKED
+  
+  // Patient-Controlled Privacy Flags
+  shareName             Boolean                 @default(true)
+  sharePhone            Boolean                 @default(false)
+  shareEmergencyContact Boolean                 @default(true)
+  shareBloodGroup       Boolean                 @default(true)
+  shareAllergies        Boolean                 @default(true)
+  shareConditions       Boolean                 @default(true)
+  shareAddress          Boolean                 @default(false) // Home address hidden by default
+  shareEmergencyNote    Boolean                 @default(true)
+  sharePatientCode      Boolean                 @default(true)
+  shareDob              Boolean                 @default(true)
+
+  emergencyNote         String?                 // Concise emergency medical note
+
+  // Consent & Audit
+  consentGiven          Boolean                 @default(true)
+  consentGivenAt        DateTime                @default(now())
+  consentVersion        String                  @default("1.0")
+  revokedAt             DateTime?
+  lastRegeneratedAt     DateTime?
+  viewCount             Int                     @default(0)
+  lastViewedAt          DateTime?
+
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  auditLogs             EmergencyProfileAudit[]
+
+  @@index([publicToken])
+  @@index([shortId])
+  @@index([status])
+}
+
+model EmergencyProfileAudit {
+  id                    String                  @id @default(uuid())
+  profileId             String
+  profile               PatientEmergencyProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  action                String                  // CREATED, SETTINGS_UPDATED, REGENERATED, REVOKED, VIEWED
+  details               String?                 // JSON payload describing the event
+  ipAddress             String?
+  userAgent             String?
+  createdAt             DateTime                @default(now())
+
+  @@index([profileId])
+  @@index([action])
 }
 
 model MedicalRecord {
@@ -242,24 +326,37 @@ model MedicalRecord {
 }
 
 model Appointment {
-  id              String       @id @default(uuid())
-  appointmentCode String       @unique
-  patientId       String
-  patient         Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  doctorId        String
-  departmentId    String?
-  department      Department?  @relation(fields: [departmentId], references: [id])
-  hospitalId      String
-  hospital        Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  date            String       // YYYY-MM-DD
-  timeSlot        String       // e.g. 10:00 AM
-  type            String       // GENERAL, FOLLOW_UP, EMERGENCY, ROUTINE
-  status          String       @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
-  reason          String
-  diagnosisNotes  String?
-  createdAt       DateTime     @default(now())
+  id                 String       @id @default(uuid())
+  appointmentCode    String       @unique
+  patientId          String
+  patient            Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId           String
+  doctor             User         @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  departmentId       String?
+  department         Department?  @relation(fields: [departmentId], references: [id])
+  hospitalId         String
+  hospital           Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  date               String       // YYYY-MM-DD
+  timeSlot           String       // e.g. 10:00 AM
+  durationMinutes    Int          @default(30)
+  visitType          String       @default("IN_PERSON") // IN_PERSON, TELECONSULTATION
+  type               String       @default("GENERAL") // GENERAL, FOLLOW_UP, EMERGENCY, ROUTINE, SPECIALIST
+  status             String       @default("BOOKED") // BOOKED, CONFIRMED, CHECKED_IN, IN_CONSULTATION, COMPLETED, CANCELLED, NO_SHOW, RESCHEDULED
+  reason             String
+  notes              String?
+  diagnosisNotes     String?
+  cancellationReason String?
+  rejectionReason    String?
+  checkedInAt        DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  historyJson        String?      // Audit history of status changes
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   consultations   Consultation[]
+
+  @@unique([doctorId, date, timeSlot], map: "unique_doctor_date_slot")
 }
 
 model Consultation {
@@ -568,21 +665,63 @@ model AIPredictionLog {
 
 model SupportIssue {
   id              String   @id @default(uuid())
-  ticketCode      String   @unique // e.g. TICKET-2026-0001
+  ticketCode      String   @unique // e.g. NMX-TKT-2026-000123
   hospitalId      String?
   hospital        Hospital? @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?     @relation("UserSupportIssues", fields: [userId], references: [id], onDelete: SetNull)
+  userRole        String?   @default("USER")
   registeredName  String
   mobile          String
   email           String
-  issueType       String   @default("TECHNICAL") // TECHNICAL, HOSPITAL_ONBOARDING, BILLING, GENERAL
+  issueType       String   @default("TECHNICAL") // TECHNICAL, HOSPITAL_ONBOARDING, BILLING, GENERAL, CLINICAL
+  priority        String   @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
   subject         String
   description     String
   attachmentUrl   String?  // Image data URL or path
-  status          String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED, CLOSED
-  adminResponse   String?
-  resolvedAt      DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status          String   @default("OPEN") // OPEN, IN_PROGRESS, WAITING_FOR_USER, WAITING_FOR_SUPPORT, RESOLVED, CLOSED
+  assignedToId    String?
+  assignedTo      User?    @relation("AssignedTickets", fields: [assignedToId], references: [id], onDelete: SetNull)
+  adminResponse       String?
+  resolvedAt          DateTime?
+  closedAt            DateTime?
+  emailStatus         String?   @default("PENDING") // PENDING, SENT, FAILED
+  emailSentAt         DateTime?
+  emailFailureReason  String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  messages            SupportMessage[]
+  timelineEvents      SupportTicketEvent[]
+}
+
+model SupportMessage {
+  id            String       @id @default(uuid())
+  ticketId      String
+  ticket        SupportIssue @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId      String?
+  sender        User?        @relation("UserSupportMessages", fields: [senderId], references: [id], onDelete: SetNull)
+  senderRole    String       // SUPER_ADMIN, HOSPITAL_ADMIN, DOCTOR, PATIENT, etc.
+  senderName    String
+  message       String
+  attachmentUrl String?
+  isInternal    Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+}
+
+model SupportTicketEvent {
+  id          String       @id @default(uuid())
+  ticketId    String
+  ticket      SupportIssue @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actorId     String?
+  actor       User?        @relation("ActorTicketEvents", fields: [actorId], references: [id], onDelete: SetNull)
+  actorRole   String
+  actorName   String
+  type        String       // STATUS_CHANGED, ASSIGNED, MESSAGE_POSTED, REOPENED, CLOSED, CREATED
+  oldStatus   String?
+  newStatus   String?
+  description String
+  createdAt   DateTime     @default(now())
 }
 
 model RAGKnowledgeDoc {
@@ -607,3 +746,41 @@ model AuditLog {
   ipAddress   String?
   timestamp   DateTime @default(now())
 }
+
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email      String
+  phone      String?
+  channel    String    @default("email") // email or phone
+  otpHash    String    // Hashed 6-digit OTP
+  resetToken String    @unique // Single-use authorization token
+  attempts   Int       @default(0) // Failed verification attempts
+  expiresAt  DateTime  // 5 minutes expiry
+  usedAt     DateTime? // Timestamp when consumed
+  createdAt  DateTime  @default(now())
+
+  @@index([email])
+  @@index([phone])
+  @@index([resetToken])
+}
+
+model OtpChallenge {
+  id             String    @id @default(uuid())
+  email          String
+  purpose        String    // REGISTRATION, LOGIN, PASSWORD_RESET
+  otpHash        String    // Bcrypt hash of the 6-digit OTP
+  challengeToken String    @unique // Unique secure token (hex or UUID)
+  userId         String?
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metadataJson   String?   // JSON storing pending registration payload or login context
+  attempts       Int       @default(0) // Failed attempt counter, max 5
+  expiresAt      DateTime  // 5 minutes from generation
+  consumedAt     DateTime? // When successfully verified
+  createdAt      DateTime  @default(now())
+
+  @@index([email, purpose])
+  @@index([challengeToken])
+}
+

@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
     let pyResult: any = null;
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/predict/disease', {
+      const aiBase = process.env.AI_SERVICE_URL || 'http://127.0.0.1:8000';
+      const response = await fetch(`${aiBase}/api/predict/disease`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

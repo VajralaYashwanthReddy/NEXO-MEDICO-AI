@@ -2,61 +2,61 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { comparePasswords, signJwtToken, formatNameFromEmail } from '@/lib/auth';
 import { createAuditLog } from '@/lib/audit';
-import { getGlobalPatients, addGlobalPatient } from '@/lib/patientStore';
+import { createOtpChallenge, verifyOtpChallenge } from '@/lib/otpService';
 
 export async function POST(req: NextRequest) {
-  let email = '';
-  let password = '';
-  let inputClean = '';
+  let body: any = {};
 
   try {
-    const body = await req.json();
-    email = body.email || '';
-    password = body.password || '';
+    body = await req.json();
   } catch (e) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  if (!email || !password) {
-    return NextResponse.json({ error: 'Email or Universal Patient ID and password are required' }, { status: 400 });
-  }
+  // --------------------------------------------------------------------------
+  // STEP 2: VERIFY LOGIN OTP (Mint Authenticated Session Only After OTP)
+  // --------------------------------------------------------------------------
+  if (body.action === 'verify_login_otp' || (body.challengeToken && body.otpCode)) {
+    const { challengeToken, otpCode } = body;
 
-  inputClean = email.trim();
-
-  try {
-    let user: any = null;
-
-    // Check if input is a Universal Patient ID (NEXO-PAT-xxxxxx)
-    if (inputClean.toUpperCase().startsWith('NEXO-PAT-')) {
-      const patient = await prisma.patient.findUnique({
-        where: { patientCode: inputClean.toUpperCase() },
-        include: { user: { include: { hospital: true } } }
-      });
-      if (patient && patient.user) {
-        user = patient.user;
-      }
-    } else {
-      // Find user by Email
-      user = await prisma.user.findUnique({
-        where: { email: inputClean.toLowerCase() },
-        include: { hospital: true, patientProfile: true }
-      });
+    if (!challengeToken || !otpCode) {
+      return NextResponse.json({ error: 'Challenge token and 6-digit OTP code are required.' }, { status: 400 });
     }
 
+    const verification = await verifyOtpChallenge({
+      challengeToken,
+      otpCode,
+      purpose: 'LOGIN'
+    });
+
+    if (!verification.valid) {
+      return NextResponse.json({ error: verification.error || 'Invalid or expired OTP code.' }, { status: 400 });
+    }
+
+    // Retrieve verified user from database
+    const user = await prisma.user.findUnique({
+      where: { id: verification.userId || undefined, email: verification.email },
+      include: { hospital: true, patientProfile: true }
+    });
+
     if (!user) {
-      // If user not found in DB, check demo/fallback store
-      throw new Error('User not found in DB, trigger fallback check');
+      return NextResponse.json({ error: 'Authenticated account could not be found.' }, { status: 404 });
+    }
+
+    // Re-verify hospital suspension and account status
+    if (user.role !== 'SUPER_ADMIN' && user.hospitalId) {
+      if (user.hospital?.status === 'SUSPENDED') {
+        return NextResponse.json({
+          error: 'Your hospital account has been suspended. Please contact the platform administrator.',
+          code: 'HOSPITAL_SUSPENDED'
+        }, { status: 403 });
+      }
     }
 
     if (user.status !== 'ACTIVE') {
       return NextResponse.json({
-        error: 'Your account is inactive/suspended. Please contact system administrator.'
+        error: 'Your account is inactive/suspended. Please contact the platform administrator.'
       }, { status: 403 });
-    }
-
-    const passwordMatch = await comparePasswords(password, user.passwordHash);
-    if (!passwordMatch) {
-      return NextResponse.json({ error: 'Invalid Email / Universal Patient ID or password' }, { status: 401 });
     }
 
     const sanitizedName = (user.name && user.name !== 'Patient Account' && user.name !== 'Registered Patient')
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
       id: user.id,
       email: user.email,
       name: sanitizedName,
-      role: user.role,
+      role: user.role, // Always use database role, never trust client
       hospitalId: user.hospitalId,
       departmentId: user.departmentId,
       patientCode: user.patientProfile?.patientCode,
@@ -85,14 +85,14 @@ export async function POST(req: NextRequest) {
         userId: user.id,
         action: 'USER_LOGIN',
         resource: `User:${user.email}`,
-        details: { role: user.role }
+        details: { role: user.role, method: '2FA_GMAIL_SMTP_OTP' }
       });
     } catch (auditErr) {
       console.warn('Audit log skipped:', auditErr);
     }
 
     const response = NextResponse.json({
-      message: 'Login successful',
+      message: 'Login successful and 2FA verified',
       user: {
         id: user.id,
         email: user.email,
@@ -109,121 +109,123 @@ export async function POST(req: NextRequest) {
       token
     });
 
+    const isHttps = req.headers.get('x-forwarded-proto') === 'https' || req.nextUrl.protocol === 'https:';
     response.cookies.set('nexo_token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isHttps || process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
       maxAge: 86400
     });
 
     return response;
+  }
 
-  } catch (error: any) {
-    console.warn('Using zero-downtime fallback for login:', inputClean);
+  // --------------------------------------------------------------------------
+  // STEP 1: VALIDATE CREDENTIALS & ISSUE LOGIN OTP VIA GMAIL SMTP
+  // --------------------------------------------------------------------------
+  const emailRaw = body.email || '';
+  const password = body.password || '';
+  const captchaInput = body.captchaInput;
+  const expectedCaptcha = body.expectedCaptcha;
 
-    const emailLower = inputClean.toLowerCase();
-    const globalPatients = getGlobalPatients();
+  if (!emailRaw || !password) {
+    return NextResponse.json({ error: 'Email or Universal Patient ID and password are required' }, { status: 400 });
+  }
 
-    // Check if patient exists in Patient Store
-    let patientMatch = globalPatients.find(p =>
-      (p.email && p.email.toLowerCase() === emailLower) ||
-      (p.patientCode && p.patientCode.toUpperCase() === inputClean.toUpperCase()) ||
-      (p.user?.email && p.user.email.toLowerCase() === emailLower) ||
-      (p.fullName && p.fullName.toLowerCase() === emailLower) ||
-      (p.fullName && formatNameFromEmail(inputClean).toLowerCase() === p.fullName.toLowerCase())
-    );
+  // Verify visual CAPTCHA if provided
+  if (captchaInput !== undefined && expectedCaptcha !== undefined) {
+    if (!captchaInput || captchaInput.trim().toUpperCase() !== expectedCaptcha.trim().toUpperCase()) {
+      return NextResponse.json({ error: 'Invalid CAPTCHA code. Please check characters & try again.' }, { status: 400 });
+    }
+  }
 
-    let role = 'PATIENT';
-    let name = formatNameFromEmail(inputClean);
-    let hospitalId: string | null = 'hosp-metro-01';
-    let hospitalName = 'Metropolitan General Hospital';
+  const inputClean = emailRaw.trim();
 
-    if (patientMatch) {
-      if (patientMatch.user?.status === 'SUSPENDED' || (patientMatch as any).status === 'SUSPENDED') {
-        return NextResponse.json({
-          error: 'Your account is inactive/suspended. Please contact system administrator.'
-        }, { status: 403 });
+  try {
+    let user: any = null;
+
+    // Check if input is a Universal Patient ID (NEXO-PAT-xxxxxx)
+    if (inputClean.toUpperCase().startsWith('NEXO-PAT-')) {
+      const patient = await prisma.patient.findUnique({
+        where: { patientCode: inputClean.toUpperCase() },
+        include: { user: { include: { hospital: true, patientProfile: true } } }
+      });
+      if (patient && patient.user) {
+        user = patient.user;
       }
-      role = 'PATIENT';
-      name = patientMatch.fullName;
-      hospitalId = patientMatch.hospitalId;
-      hospitalName = patientMatch.hospital?.name || 'Metropolitan General Hospital';
-    } else if (emailLower.includes('superadmin') || emailLower.includes('supradmin') || emailLower.includes('platform')) {
-      role = 'SUPER_ADMIN';
-      name = 'Master Platform Super Admin';
-      hospitalId = null;
-      hospitalName = 'All Platform Tenants';
-    } else if (emailLower.includes('admin') || emailLower.includes('hospitaladmin') || emailLower.includes('hospadmin')) {
-      role = 'HOSPITAL_ADMIN';
-      name = 'Hospital Administrator';
-    } else if (emailLower.includes('dr.') || emailLower.includes('doctor')) {
-      role = 'DOCTOR';
-      name = 'Dr. Sarah Smith (Cardiologist)';
-    } else if (emailLower.includes('nurse')) {
-      role = 'NURSE';
-      name = 'Nurse Sarah Johnson';
-    } else if (emailLower.includes('pharma')) {
-      role = 'PHARMACIST';
-      name = 'Alex Vance (Lead Pharmacist)';
-    } else if (emailLower.includes('lab')) {
-      role = 'LAB_TECH';
-      name = 'Lab Tech Robert Chen';
     } else {
-      // Default for all personal/registered patient accounts
-      role = 'PATIENT';
-      name = formatNameFromEmail(inputClean);
-
-      patientMatch = addGlobalPatient({
-        fullName: name,
-        email: emailLower
+      // Find user by Email
+      user = await prisma.user.findUnique({
+        where: { email: inputClean.toLowerCase() },
+        include: { hospital: true, patientProfile: true }
       });
     }
 
-    const fallbackUser = {
-      id: patientMatch ? (patientMatch.userId || patientMatch.id) : `usr-pat-${Date.now()}`,
-      email: inputClean,
-      name,
-      role,
-      patientCode: patientMatch ? patientMatch.patientCode : undefined,
-      gender: patientMatch?.gender,
-      dob: patientMatch?.dob,
-      phone: patientMatch?.phone,
-      bloodGroup: patientMatch?.bloodGroup,
-      hospitalId,
-      hospitalName
-    };
+    if (!user) {
+      return NextResponse.json({
+        error: 'No account is found with this email address.'
+      }, { status: 404 });
+    }
 
-    const payload = {
-      id: fallbackUser.id,
-      email: fallbackUser.email,
-      name: fallbackUser.name,
-      role: fallbackUser.role,
-      hospitalId: fallbackUser.hospitalId,
-      departmentId: null,
-      patientCode: fallbackUser.patientCode,
-      gender: fallbackUser.gender,
-      dob: fallbackUser.dob,
-      phone: fallbackUser.phone,
-      bloodGroup: fallbackUser.bloodGroup
-    };
+    // Check hospital suspension
+    if (user.role !== 'SUPER_ADMIN' && user.hospitalId) {
+      if (user.hospital?.status === 'SUSPENDED') {
+        return NextResponse.json({
+          error: 'Your hospital account has been suspended. Please contact the platform administrator.',
+          code: 'HOSPITAL_SUSPENDED'
+        }, { status: 403 });
+      }
+    }
 
-    const token = signJwtToken(payload);
+    // Check account status
+    if (user.status !== 'ACTIVE') {
+      return NextResponse.json({
+        error: 'Your account is inactive/suspended. Please contact the platform administrator.'
+      }, { status: 403 });
+    }
 
-    const response = NextResponse.json({
-      message: 'Login successful',
-      user: fallbackUser,
-      token
+    // Validate password (bcrypt comparison)
+    const passwordMatch = await comparePasswords(password, user.passwordHash);
+    if (!passwordMatch) {
+      // An invalid password MUST NEVER trigger an OTP email
+      return NextResponse.json({ error: 'Invalid password. Please check your credentials.' }, { status: 401 });
+    }
+
+    // Credentials are valid! Generate 2FA Login Challenge & send via Gmail SMTP to database email
+    const challengeResult = await createOtpChallenge({
+      email: user.email,
+      purpose: 'LOGIN',
+      userId: user.id,
+      userName: user.name,
+      metadata: { role: user.role }
     });
 
-    response.cookies.set('nexo_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 86400
-    });
+    if (!challengeResult.success) {
+      const status = challengeResult.code === 'RESEND_COOLDOWN' ? 429 : 500;
+      const errorMessage = challengeResult.code === 'RESEND_COOLDOWN'
+        ? challengeResult.error
+        : "We couldn't send the verification code. Please try again shortly.";
+      return NextResponse.json({
+        error: errorMessage,
+        code: challengeResult.code
+      }, { status });
+    }
 
-    return response;
+    // Return 2FA challenge response (DO NOT MINT JWT SESSION TOKEN YET!)
+    return NextResponse.json({
+      success: true,
+      requiresOtp: true,
+      challengeToken: challengeResult.challengeToken,
+      maskedEmail: challengeResult.maskedEmail,
+      destinationText: challengeResult.maskedEmail,
+      expiresInSeconds: challengeResult.expiresInSeconds,
+      message: 'Verification code submitted. Check your inbox and spam folder.',
+      detail: `Credentials verified. Verification code submitted via Gmail SMTP to ${challengeResult.maskedEmail}.`
+    }, { status: 200 });
+
+  } catch (error: any) {
+    console.error('Login Error:', error);
+    return NextResponse.json({ error: "We couldn't send the verification code. Please try again shortly." }, { status: 500 });
   }
 }

@@ -25,6 +25,20 @@ export async function GET(
       return NextResponse.json({ error: 'Patient medical record not found' }, { status: 404 });
     }
 
+    // Role-based authorization: Patients can ONLY view their own records
+    if (user.role === 'PATIENT') {
+      const uEmail = user.email?.toLowerCase().trim();
+      const uPatientCode = (user as any).patientCode;
+      const isOwner =
+        basePatient.userId === user.id ||
+        (uEmail && basePatient.email?.toLowerCase().trim() === uEmail) ||
+        (uPatientCode && basePatient.patientCode === uPatientCode);
+
+      if (!isOwner) {
+        return NextResponse.json({ error: 'Forbidden: You can only access your own medical timeline.' }, { status: 403 });
+      }
+    }
+
     // Find all records matching this patient's unique patientCode across ALL hospitals in network
     const allPatientProfiles = await prisma.patient.findMany({
       where: {

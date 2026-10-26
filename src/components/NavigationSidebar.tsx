@@ -32,6 +32,7 @@ import {
   LifeBuoy,
   Cpu,
   Radio,
+  QrCode,
   X
 } from 'lucide-react';
 
@@ -165,6 +166,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({ isOpenMobi
 
   const patientNav = [
     { label: 'Patient Dashboard', href: '/patient/dashboard', icon: LayoutDashboard },
+    { label: 'My Emergency QR ID', href: '/patient/emergency-qr', icon: QrCode },
     { label: 'AI Clinical Engines', href: '/patient/ai-engines', icon: Sparkles },
     { label: 'My Medical Timeline', href: '/patient/timeline', icon: FileText },
     { label: 'My Prescriptions', href: '/patient/prescriptions', icon: Pill },
@@ -360,12 +362,25 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({ isOpenMobi
         <div className="p-4 border-t border-slate-800 bg-slate-950/50 space-y-3">
           {/* Contact Us button ONLY for Hospital Admin, Patient, Doctor, Nurse, Pharmacist, Lab Tech (Hidden for Platform Admin) */}
           {!isPlatformSuperAdmin && (
-            <button
-              onClick={() => setShowContactUs(true)}
-              className="w-full py-2 px-3 bg-slate-800 hover:bg-blue-600 hover:text-white text-slate-300 text-xs font-extrabold rounded-xl border border-slate-700/60 flex items-center justify-center gap-2 transition-all shadow-xs"
-            >
-              <Headphones className="w-4 h-4 text-cyan-400" /> Contact Us / Report Issue
-            </button>
+            <div className="space-y-1.5">
+              <Link
+                href="/support"
+                onClick={() => onCloseMobile && onCloseMobile()}
+                className={`w-full py-2 px-3 text-xs font-black rounded-xl border flex items-center justify-center gap-2 transition-all shadow-xs ${
+                  pathname === '/support'
+                    ? 'bg-cyan-600 text-white border-cyan-500 shadow-md shadow-cyan-600/30'
+                    : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700/60 hover:text-white'
+                }`}
+              >
+                <Headphones className="w-4 h-4 text-cyan-400" /> Support Tickets & Chat
+              </Link>
+              <button
+                onClick={() => setShowContactUs(true)}
+                className="w-full py-1.5 px-3 bg-transparent hover:bg-slate-800/60 text-slate-400 hover:text-slate-200 text-[11px] font-bold rounded-lg flex items-center justify-center gap-1.5 transition-all"
+              >
+                <LifeBuoy className="w-3.5 h-3.5 text-slate-400" /> Quick Report Modal
+              </button>
+            </div>
           )}
 
           <div className="flex items-center justify-between pt-1">
