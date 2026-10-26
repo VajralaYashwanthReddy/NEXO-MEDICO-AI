@@ -215,11 +215,11 @@ The application is now accessible at: **`http://localhost:3000`**
 
 | Figure | Description |
 | :---: | :--- |
-| ![Patient Registration](docs/screenshots/Fig_5_4_Patient_Self_Registration_Form.png) | **Patient Self-Registration**: India-locked demographic validation with standardized State and District cascading dropdowns. |
-| ![OTP Modal](docs/screenshots/Fig_5_1_Patient_Registration_OTP_Modal.png) | **2FA Identity Verification**: Cryptographic 6-digit OTP modal with 10-minute active challenge countdown. |
-| ![Doctor Consultation](docs/screenshots/Fig_5_5_Doctor_Clinical_Encounter_Dashboard.png) | **Doctor Encounter Chamber**: Longitudinal timeline, vitals logging, and structured diagnosis entry. |
-| ![Explainable AI](docs/screenshots/Fig_5_7_AI_Clinical_Decision_Support_Engine.png) | **Explainable AI (CDSS)**: Real-time risk probability stratification with SHAP feature-importance attribution bars. |
-| ![Hospital Multi-Tenancy](docs/screenshots/Fig_5_8_Hospital_Multi_Tenancy_Management.png) | **Multi-Tenant Administration**: Real-time ward occupancy and inpatient bed allocation dashboard. |
+| ![Patient Registration](docs/screenshots/Fig_5_4_Patient_Self_Registration_Form.png) | **Patient Self-Registration**: India-locked demographic validation with standardized State/District cascading dropdowns, PIN code verification, and visual CAPTCHA. |
+| ![OTP Modal](docs/screenshots/Fig_5_1_Patient_Registration_OTP_Modal.png) | **2FA Identity Verification**: Cryptographic 6-digit OTP modal with Gmail SMTP dispatch notification and active challenge countdown. |
+| ![Hospital Departments](docs/screenshots/Fig_5_5_Doctor_Clinical_Encounter_Dashboard.png) | **Hospital Departments & Clinical Governance**: Department-wise clinical units, physician staffing assignments, and real-time ICU Code Red resuscitation alert monitoring. |
+| ![Global Patient Registry](docs/screenshots/Fig_5_7_AI_Clinical_Decision_Support_Engine.png) | **Global Universal Patient Directory**: Centralized multi-tenant patient directory with Universal Patient IDs (`NEXO-PAT-xxxxxx`), encounter records, and cross-hospital identity management. |
+| ![Universal Health Passport](docs/screenshots/Fig_5_8_Hospital_Multi_Tenancy_Management.png) | **Universal Patient Health Passport**: Complete longitudinal electronic health record (EHR) timeline, AI health index scoring (92.5/100 A+), and active prescription tracking. |
 
 ---
 
