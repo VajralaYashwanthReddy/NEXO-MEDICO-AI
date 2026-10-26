@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -36,7 +36,7 @@ import {
 import { useRealtimeAppointments } from '@/hooks/useRealtimeAppointments';
 import { PatientEmergencyQrCard } from '@/components/PatientEmergencyQrCard';
 
-export default function PatientDashboard() {
+function PatientDashboardContent() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1604,5 +1604,20 @@ export default function PatientDashboard() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PatientDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-slate-400">
+          <RefreshCw className="w-8 h-8 animate-spin text-cyan-400" />
+          <p className="text-sm font-medium">Loading Universal Patient Health Passport...</p>
+        </div>
+      }
+    >
+      <PatientDashboardContent />
+    </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, Suspense } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import {
   UserCheck,
@@ -52,7 +52,7 @@ const COMMON_DIAGNOSES = [
   'Lumbar Disc Disorder / Low Back Pain'
 ];
 
-export default function CompletePatientTimelinePage() {
+function CompletePatientTimelineContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -1757,5 +1757,19 @@ export default function CompletePatientTimelinePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CompletePatientTimelinePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-slate-400">
+          <p className="text-sm font-medium">Loading Clinical Encounter Chamber...</p>
+        </div>
+      }
+    >
+      <CompletePatientTimelineContent />
+    </Suspense>
   );
 }

@@ -45,6 +45,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Academic project documentation (preserved locally, excluded from repository)
+Major_Project_Phase_1_Documentation/
+
 # Python virtual environments & bytecode
 __pycache__/
 *.py[cod]

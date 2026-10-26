@@ -5,6 +5,8 @@ import {
   generateDoctorAvailableSlots
 } from '@/lib/appointmentSlots';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/appointments/slots?doctorId=...&date=YYYY-MM-DD
 export async function GET(req: NextRequest) {
   try {
